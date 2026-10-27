@@ -118,10 +118,10 @@ int main() {
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = {(float)overlay.width, (float)overlay.height};
     io.IniFilename = nullptr;
-    // Scale font for phone DPI — 2712px tall phone, aim for ~1.8x at 1080p baseline
-    float dpi_scale = (float)overlay.height / 2400.f;  // 2400 = baseline for this device
-    if (dpi_scale < 0.8f) dpi_scale = 0.8f;
-    if (dpi_scale > 2.0f) dpi_scale = 2.0f;
+    // Scale font: target ~22px rendered size on any screen density
+    // Default ImGui font is 13px; scale = target / 13
+    float dpi_scale = ((float)overlay.height / 1080.f) * 1.4f;
+    if (dpi_scale < 1.0f) dpi_scale = 1.0f;
     io.FontGlobalScale = dpi_scale;
 
     fprintf(stderr, "[KERNEL] ImGui_ImplAndroid_Init...\n");
@@ -136,13 +136,15 @@ int main() {
 
     menu.visible = true;  // show immediately on launch
 
-    // Start volume button reader (background thread)
+    // Start input reader (touch + volume buttons)
     InputState input{};
+    input.screen_w = overlay.width;
+    input.screen_h = overlay.height;
     input_init(input);
     fprintf(stderr, "[KERNEL] Input reader started\n");
 
-    // menu starts visible — enable touch immediately
-    overlay_set_touchable(overlay, true);
+    // Overlay always NOT_TOUCHABLE — touch is read from /dev/input directly
+    // so game also gets all touches (no blocking)
 
     fprintf(stderr, "[KERNEL] main loop start %dx%d\n", overlay.width, overlay.height);
     LOGI("main loop start %dx%d", overlay.width, overlay.height);
@@ -151,11 +153,6 @@ int main() {
         // Double-press either volume button → toggle menu on/off
         if (input_consume_double_press(input)) {
             menu.visible = !menu.visible;
-            // Run Binder IPC on background thread — don't block render loop
-            bool vis = menu.visible;
-            std::thread([&overlay, vis]() {
-                overlay_set_touchable(overlay, vis);
-            }).detach();
         }
 
         // Try to find FF in background — don't block rendering
@@ -179,6 +176,7 @@ int main() {
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplAndroid_NewFrame();
+        input_pump_imgui(input);  // forward /dev/input touch events to ImGui
         ImGui::NewFrame();
 
         // ESP layer (always drawn)

@@ -60,11 +60,12 @@ bool menu_draw(MenuState& menu, ESPConfig& esp_cfg,
     ImGui::PushStyleColor(ImGuiCol_TabActive,     IM_COL32(70,100, 200, 255));
     ImGui::PushStyleColor(ImGuiCol_TabHovered,    IM_COL32(50, 70, 140, 240));
 
-    // Size = 42% width x 28% height, position top-left with small margin
+    // Size proportional to screen; always resizable/movable by user
     ImGuiIO& sio = ImGui::GetIO();
     float sw = sio.DisplaySize.x, sh = sio.DisplaySize.y;
-    ImGui::SetNextWindowSize({sw * 0.42f, sh * 0.28f}, ImGuiCond_Once);
-    ImGui::SetNextWindowPos({sw * 0.02f,  sh * 0.02f}, ImGuiCond_Once);
+    float scale = sio.FontGlobalScale > 0.f ? sio.FontGlobalScale : 1.f;
+    ImGui::SetNextWindowSize({380.f * scale, 520.f * scale}, ImGuiCond_Once);
+    ImGui::SetNextWindowPos({sw * 0.02f, sh * 0.02f}, ImGuiCond_Once);
 
     bool open = true;
     ImGui::Begin("##KernelMenu", &open,

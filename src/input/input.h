@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <sys/ioctl.h>
 #include <cstring>
 #include <cstdio>
 #include <string>
@@ -11,75 +12,128 @@
 #include <atomic>
 #include <mutex>
 
-// Android key codes for volume buttons
 #define KEY_VOLUMEDOWN  114
 #define KEY_VOLUMEUP    115
 
-struct InputState {
-    std::atomic<bool>     vol_down{false};   // single press pending
-    std::atomic<bool>     vol_up{false};
-    std::atomic<bool>     double_press{false}; // double-press (either button) detected
-    std::atomic<bool>     running{true};
-    std::thread           reader;
-    // double-press tracking (written only from reader thread)
-    int64_t               last_vol_ms{0};
-    static constexpr int  DOUBLE_MS = 400;
+struct TouchEvent {
+    float x, y;
+    bool  down;   // true = finger down, false = finger up
+    bool  valid;
 };
 
-// Find all /dev/input/eventX devices
+struct InputState {
+    std::atomic<bool>  double_press{false};
+    std::atomic<bool>  running{true};
+    std::thread        reader;
+
+    // Touch state — written by reader, read by main thread each frame
+    std::mutex         touch_mtx;
+    std::vector<TouchEvent> touch_queue;
+
+    // double-press tracking
+    int64_t            last_vol_ms{0};
+    static constexpr int DOUBLE_MS = 400;
+
+    // screen dims for coordinate mapping (set before init)
+    int screen_w{1080};
+    int screen_h{2400};
+};
+
 static std::vector<std::string> find_input_devices() {
     std::vector<std::string> devs;
     DIR* d = opendir("/dev/input");
     if (!d) return devs;
     struct dirent* ent;
-    while ((ent = readdir(d))) {
-        if (strncmp(ent->d_name, "event", 5) == 0) {
+    while ((ent = readdir(d)))
+        if (strncmp(ent->d_name, "event", 5) == 0)
             devs.push_back(std::string("/dev/input/") + ent->d_name);
-        }
-    }
     closedir(d);
     return devs;
 }
 
-// Background thread: open all input devices, poll for volume key events
+// Per-device touch tracking
+struct DevTouch {
+    int   fd;
+    int   abs_x_min, abs_x_max;
+    int   abs_y_min, abs_y_max;
+    int   cur_x{0}, cur_y{0};
+    bool  touching{false};
+    bool  is_touch_dev{false};
+};
+
 static void input_reader_thread(InputState* st) {
     auto devs = find_input_devices();
-    std::vector<int> fds;
-    for (auto& p : devs) {
-        int fd = open(p.c_str(), O_RDONLY | O_NONBLOCK);
-        if (fd >= 0) fds.push_back(fd);
-    }
-    fprintf(stderr, "[INPUT] opened %zu input devices\n", fds.size());
+    std::vector<DevTouch> touch_devs;
 
     auto now_ms = []() -> int64_t {
         return std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
     };
 
+    for (auto& p : devs) {
+        int fd = open(p.c_str(), O_RDONLY | O_NONBLOCK);
+        if (fd < 0) continue;
+
+        DevTouch dt; dt.fd = fd;
+        // Check if device has ABS_MT_POSITION_X — touchscreen
+        struct input_absinfo ai{};
+        if (ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &ai) == 0) {
+            dt.abs_x_min = ai.minimum; dt.abs_x_max = ai.maximum;
+            ioctl(fd, EVIOCGABS(ABS_MT_POSITION_Y), &ai);
+            dt.abs_y_min = ai.minimum; dt.abs_y_max = ai.maximum;
+            dt.is_touch_dev = (dt.abs_x_max > dt.abs_x_min);
+        }
+        touch_devs.push_back(dt);
+    }
+    fprintf(stderr, "[INPUT] opened %zu devices\n", touch_devs.size());
+
     while (st->running.load()) {
-        for (int fd : fds) {
+        for (auto& dt : touch_devs) {
             struct input_event ev;
-            while (read(fd, &ev, sizeof(ev)) == sizeof(ev)) {
-                if (ev.type == EV_KEY && ev.value == 1) {  // key down
-                    bool is_vol = (ev.code == KEY_VOLUMEDOWN || ev.code == KEY_VOLUMEUP);
-                    if (is_vol) {
-                        int64_t now = now_ms();
-                        int64_t diff = now - st->last_vol_ms;
-                        if (diff > 0 && diff < st->DOUBLE_MS) {
-                            // second press within window — double press
-                            st->double_press.store(true);
-                            st->last_vol_ms = 0;  // reset so triple doesn't trigger again
-                        } else {
-                            st->last_vol_ms = now;
-                        }
+            while (read(dt.fd, &ev, sizeof(ev)) == sizeof(ev)) {
+                // Volume double-press
+                if (ev.type == EV_KEY && ev.value == 1 &&
+                    (ev.code == KEY_VOLUMEDOWN || ev.code == KEY_VOLUMEUP)) {
+                    int64_t now = now_ms();
+                    int64_t diff = now - st->last_vol_ms;
+                    if (diff > 0 && diff < st->DOUBLE_MS) {
+                        st->double_press.store(true);
+                        st->last_vol_ms = 0;
+                    } else {
+                        st->last_vol_ms = now;
                     }
+                }
+
+                // Touch events
+                if (!dt.is_touch_dev) continue;
+                if (ev.type == EV_ABS) {
+                    if (ev.code == ABS_MT_POSITION_X || ev.code == ABS_X)
+                        dt.cur_x = ev.value;
+                    if (ev.code == ABS_MT_POSITION_Y || ev.code == ABS_Y)
+                        dt.cur_y = ev.value;
+                }
+                if (ev.type == EV_KEY && ev.code == BTN_TOUCH) {
+                    dt.touching = (ev.value == 1);
+                }
+                if (ev.type == EV_SYN && ev.code == SYN_REPORT) {
+                    if (dt.abs_x_max <= dt.abs_x_min) continue;
+                    // Map raw coords to screen pixels
+                    float nx = (float)(dt.cur_x - dt.abs_x_min) / (dt.abs_x_max - dt.abs_x_min);
+                    float ny = (float)(dt.cur_y - dt.abs_y_min) / (dt.abs_y_max - dt.abs_y_min);
+                    TouchEvent te{};
+                    te.x     = nx * st->screen_w;
+                    te.y     = ny * st->screen_h;
+                    te.down  = dt.touching;
+                    te.valid = true;
+                    std::lock_guard<std::mutex> lk(st->touch_mtx);
+                    st->touch_queue.push_back(te);
                 }
             }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        std::this_thread::sleep_for(std::chrono::milliseconds(8));
     }
 
-    for (int fd : fds) close(fd);
+    for (auto& dt : touch_devs) close(dt.fd);
 }
 
 static void input_init(InputState& st) {
@@ -91,7 +145,21 @@ static void input_destroy(InputState& st) {
     if (st.reader.joinable()) st.reader.join();
 }
 
-// Returns true if a double-press (either vol button) happened this frame
 static bool input_consume_double_press(InputState& st) {
     return st.double_press.exchange(false);
+}
+
+// Call each frame — drains touch queue into ImGui
+#include "../imgui/imgui.h"
+static void input_pump_imgui(InputState& st) {
+    std::vector<TouchEvent> events;
+    {
+        std::lock_guard<std::mutex> lk(st.touch_mtx);
+        events.swap(st.touch_queue);
+    }
+    ImGuiIO& io = ImGui::GetIO();
+    for (auto& te : events) {
+        io.AddMousePosEvent(te.x, te.y);
+        io.AddMouseButtonEvent(0, te.down);
+    }
 }
