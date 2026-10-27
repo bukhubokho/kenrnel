@@ -27,6 +27,9 @@ bool overlay_create(OverlayContext& ctx);
 // Init EGL + GLES2 on ctx.window
 bool overlay_init_egl(OverlayContext& ctx);
 
+// Query current EGL surface size into ctx.width/height (call each frame)
+void overlay_query_size(OverlayContext& ctx);
+
 // Begin frame: clear, set viewport
 void overlay_begin_frame(const OverlayContext& ctx);
 

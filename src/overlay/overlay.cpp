@@ -470,6 +470,14 @@ bool overlay_init_egl(OverlayContext& ctx) {
     return true;
 }
 
+void overlay_query_size(OverlayContext& ctx) {
+    if (ctx.display == EGL_NO_DISPLAY || ctx.surface == EGL_NO_SURFACE) return;
+    EGLint w = 0, h = 0;
+    eglQuerySurface(ctx.display, ctx.surface, EGL_WIDTH,  &w);
+    eglQuerySurface(ctx.display, ctx.surface, EGL_HEIGHT, &h);
+    if (w > 0 && h > 0) { ctx.width = w; ctx.height = h; }
+}
+
 void overlay_begin_frame(const OverlayContext& ctx) {
     glViewport(0, 0, ctx.width, ctx.height);
     glClearColor(0.f, 0.f, 0.f, 0.f);

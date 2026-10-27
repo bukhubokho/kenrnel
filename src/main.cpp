@@ -138,8 +138,8 @@ int main() {
 
     // Start input reader (touch + volume buttons)
     InputState input{};
-    input.screen_w = overlay.width;
-    input.screen_h = overlay.height;
+    input.screen_w.store(overlay.width);
+    input.screen_h.store(overlay.height);
     input_init(input);
     fprintf(stderr, "[KERNEL] Input reader started\n");
 
@@ -154,6 +154,12 @@ int main() {
         if (input_consume_double_press(input)) {
             menu.visible = !menu.visible;
         }
+
+        // Update overlay size from EGL (handles screen rotation)
+        overlay_query_size(overlay);
+        input.screen_w.store(overlay.width);
+        input.screen_h.store(overlay.height);
+        io.DisplaySize = {(float)overlay.width, (float)overlay.height};
 
         // Try to find FF in background — don't block rendering
         if (!ff.ready) ff_init(ff);

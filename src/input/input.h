@@ -34,9 +34,16 @@ struct InputState {
     int64_t            last_vol_ms{0};
     static constexpr int DOUBLE_MS = 400;
 
-    // screen dims for coordinate mapping (set before init)
-    int screen_w{1080};
-    int screen_h{2400};
+    // portrait (natural) dims — set once at init, never changed
+    int portrait_w{1080};
+    int portrait_h{2400};
+
+    // current screen dims — updated each frame from EGL surface size
+    std::atomic<int>   screen_w{1080};
+    std::atomic<int>   screen_h{2400};
+
+    // rotation: 0=portrait, 1=90°CW, 2=180°, 3=90°CCW
+    std::atomic<int>   rotation{0};
 };
 
 static std::vector<std::string> find_input_devices() {
@@ -61,9 +68,29 @@ struct DevTouch {
     bool  is_touch_dev{false};
 };
 
+static int read_rotation_sysfs() {
+    // Try common sysfs paths for screen rotation (0/1/2/3)
+    const char* paths[] = {
+        "/sys/class/graphics/fb0/rotate",
+        "/sys/devices/virtual/graphics/fb0/rotate",
+        "/sys/class/drm/card0-DSI-1/panel_orientation",
+        nullptr
+    };
+    for (int i = 0; paths[i]; i++) {
+        FILE* f = fopen(paths[i], "r");
+        if (!f) continue;
+        int rot = 0;
+        fscanf(f, "%d", &rot);
+        fclose(f);
+        return rot & 3;
+    }
+    return -1;  // unknown
+}
+
 static void input_reader_thread(InputState* st) {
     auto devs = find_input_devices();
     std::vector<DevTouch> touch_devs;
+    int poll_count = 0;
 
     auto now_ms = []() -> int64_t {
         return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -88,6 +115,19 @@ static void input_reader_thread(InputState* st) {
     fprintf(stderr, "[INPUT] opened %zu devices\n", touch_devs.size());
 
     while (st->running.load()) {
+        // Poll rotation every ~250ms (every 30 iterations × 8ms)
+        if (++poll_count >= 30) {
+            poll_count = 0;
+            int r = read_rotation_sysfs();
+            if (r >= 0) st->rotation.store(r);
+            // Fallback: infer from screen dims
+            else {
+                int sw = st->screen_w.load(), sh = st->screen_h.load();
+                if (sw > 0 && sh > 0)
+                    st->rotation.store(sw > sh ? 1 : 0);
+            }
+        }
+
         for (auto& dt : touch_devs) {
             struct input_event ev;
             while (read(dt.fd, &ev, sizeof(ev)) == sizeof(ev)) {
@@ -117,12 +157,12 @@ static void input_reader_thread(InputState* st) {
                 }
                 if (ev.type == EV_SYN && ev.code == SYN_REPORT) {
                     if (dt.abs_x_max <= dt.abs_x_min) continue;
-                    // Map raw coords to screen pixels
+                    // Store normalized portrait coords (0..1) — pump remaps per rotation
                     float nx = (float)(dt.cur_x - dt.abs_x_min) / (dt.abs_x_max - dt.abs_x_min);
                     float ny = (float)(dt.cur_y - dt.abs_y_min) / (dt.abs_y_max - dt.abs_y_min);
                     TouchEvent te{};
-                    te.x     = nx * st->screen_w;
-                    te.y     = ny * st->screen_h;
+                    te.x     = nx;  // normalized, not pixels
+                    te.y     = ny;
                     te.down  = dt.touching;
                     te.valid = true;
                     std::lock_guard<std::mutex> lk(st->touch_mtx);
@@ -137,6 +177,9 @@ static void input_reader_thread(InputState* st) {
 }
 
 static void input_init(InputState& st) {
+    // portrait dims set by caller before init; copy as baseline for rotation fallback
+    st.portrait_w = st.screen_w.load();
+    st.portrait_h = st.screen_h.load();
     st.reader = std::thread(input_reader_thread, &st);
 }
 
@@ -149,7 +192,7 @@ static bool input_consume_double_press(InputState& st) {
     return st.double_press.exchange(false);
 }
 
-// Call each frame — drains touch queue into ImGui
+// Call each frame — drains touch queue into ImGui, remaps for current rotation
 #include "../imgui/imgui.h"
 static void input_pump_imgui(InputState& st) {
     std::vector<TouchEvent> events;
@@ -158,8 +201,33 @@ static void input_pump_imgui(InputState& st) {
         events.swap(st.touch_queue);
     }
     ImGuiIO& io = ImGui::GetIO();
+    int sw  = st.screen_w.load();
+    int sh  = st.screen_h.load();
+    int rot = st.rotation.load();
+
     for (auto& te : events) {
-        io.AddMousePosEvent(te.x, te.y);
+        // te.x/y are normalized portrait coords [0..1]
+        float nx = te.x, ny = te.y;
+        float sx, sy;
+        switch (rot) {
+        case 1:  // 90° CW — phone rotated right, USB on right
+            sx = ny * sw;
+            sy = (1.0f - nx) * sh;
+            break;
+        case 3:  // 90° CCW — phone rotated left, USB on left
+            sx = (1.0f - ny) * sw;
+            sy = nx * sh;
+            break;
+        case 2:  // 180° — upside down
+            sx = (1.0f - nx) * sw;
+            sy = (1.0f - ny) * sh;
+            break;
+        default: // 0 — portrait, direct map
+            sx = nx * sw;
+            sy = ny * sh;
+            break;
+        }
+        io.AddMousePosEvent(sx, sy);
         io.AddMouseButtonEvent(0, te.down);
     }
 }
