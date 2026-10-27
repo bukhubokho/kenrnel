@@ -514,21 +514,17 @@ void overlay_query_size(OverlayContext& ctx) {
 
     if (rot != ctx.cur_rot) {
         ctx.cur_rot = rot;
+        // Landscape = swap dims; portrait = natural
         int new_w = (rot == 1 || rot == 3) ? ctx.nat_h : ctx.nat_w;
         int new_h = (rot == 1 || rot == 3) ? ctx.nat_w : ctx.nat_h;
         ANativeWindow_setBuffersGeometry(ctx.window, new_w, new_h, 1 /*RGBA_8888*/);
+        // Trust setBuffersGeometry — don't let stale eglQuerySurface overwrite
         ctx.width  = new_w;
         ctx.height = new_h;
-        fprintf(stderr, "[OVL] rotation=%d → buffer %dx%d\n", rot, new_w, new_h);
+        fprintf(stderr, "[OVL] rotation=%d hint → buffer %dx%d\n", rot, new_w, new_h);
     }
-
-    // Sync from EGL (updates after first swap with new geometry)
-    if (ctx.display != EGL_NO_DISPLAY && ctx.surface != EGL_NO_SURFACE) {
-        EGLint w = 0, h = 0;
-        eglQuerySurface(ctx.display, ctx.surface, EGL_WIDTH,  &w);
-        eglQuerySurface(ctx.display, ctx.surface, EGL_HEIGHT, &h);
-        if (w > 0 && h > 0) { ctx.width = w; ctx.height = h; }
-    }
+    // Note: no eglQuerySurface sync here — it returns stale values until after next swap
+    // and would overwrite the correct dimensions we just set above.
 }
 
 void overlay_begin_frame(const OverlayContext& ctx) {

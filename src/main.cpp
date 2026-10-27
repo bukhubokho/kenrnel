@@ -156,11 +156,20 @@ int main() {
         }
 
         // Update overlay size + handle rotation (resizes ANativeWindow buffer)
-        overlay_query_size(overlay);
-        input.screen_w.store(overlay.width);
-        input.screen_h.store(overlay.height);
-        input.rotation.store(overlay.cur_rot);
-        io.DisplaySize = {(float)overlay.width, (float)overlay.height};
+        {
+            int prev_rot = overlay.cur_rot;
+            overlay_query_size(overlay);
+            input.screen_w.store(overlay.width);
+            input.screen_h.store(overlay.height);
+            input.rotation.store(overlay.cur_rot);
+            io.DisplaySize = {(float)overlay.width, (float)overlay.height};
+            // On rotation change, reposition menu to top-left of new display space
+            if (overlay.cur_rot != prev_rot) {
+                ImGui::SetNextWindowPos(
+                    {overlay.width * 0.02f, overlay.height * 0.02f},
+                    ImGuiCond_Always);
+            }
+        }
 
         // Try to find FF in background — don't block rendering
         if (!ff.ready) ff_init(ff);
