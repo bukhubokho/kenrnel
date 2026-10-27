@@ -323,11 +323,12 @@ bool overlay_create(OverlayContext& ctx) {
     // getSurface returns sp<Surface> via x8 (indirect result register on ARM64)
     // Surface inherits ANativeWindow — ANW magic = 0x00574e41 at offset 0
     const char* getsurf_s[] = {
-        "_ZNK7android14SurfaceControl9getSurfaceEv",      // const, Android 12
-        "_ZN7android14SurfaceControl9getSurfaceEv",       // non-const
-        "_ZNK7android14SurfaceControl17getDefaultBufferEv", // alternative name
+        "_ZN7android14SurfaceControl10getSurfaceEv",      // CONFIRMED on device (non-const)
+        "_ZNK7android14SurfaceControl10getSurfaceEv",     // const variant
+        "_ZNK7android14SurfaceControl9getSurfaceEv",      // older name
+        "_ZN7android14SurfaceControl9getSurfaceEv",
     };
-    auto get_surf_fn = (fn_getSurf)try_sym(g_libgui, getsurf_s, 3, "SC::getSurface");
+    auto get_surf_fn = (fn_getSurf)try_sym(g_libgui, getsurf_s, 4, "SC::getSurface");
 
     sp_t surf_sp = {nullptr};
     if (get_surf_fn) {
