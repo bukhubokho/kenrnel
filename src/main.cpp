@@ -3,6 +3,7 @@
 #include "overlay/overlay.h"
 #include "esp/esp.h"
 #include "menu/menu.h"
+#include "input/input.h"
 #include "imgui/imgui.h"
 #include "imgui/imgui_impl_android.h"
 #include "imgui/imgui_impl_opengl3.h"
@@ -139,10 +140,26 @@ int main() {
 
     menu.visible = true;  // show immediately on launch
 
+    // Start volume button reader (background thread)
+    InputState input{};
+    input_init(input);
+    fprintf(stderr, "[KERNEL] Input reader started\n");
+
     fprintf(stderr, "[KERNEL] main loop start %dx%d\n", overlay.width, overlay.height);
     LOGI("main loop start %dx%d", overlay.width, overlay.height);
 
     while (keep_running) {
+        // Vol-down: toggle menu visibility
+        if (input_consume_voldown(input)) {
+            menu.visible = !menu.visible;
+        }
+        // Vol-up when menu visible: simulate ImGui "click" (move cursor to focused item)
+        if (menu.visible && input_consume_volup(input)) {
+            ImGuiIO& io = ImGui::GetIO();
+            io.AddMouseButtonEvent(0, true);
+            io.AddMouseButtonEvent(0, false);
+        }
+
         // Try to find FF in background — don't block rendering
         if (!ff.ready) ff_init(ff);
 
@@ -169,7 +186,7 @@ int main() {
         // ESP layer (always drawn)
         esp_draw(entities, cam, esp_cfg);
 
-        // Menu (toggle with key/touch)
+        // Menu
         if (menu.visible) {
             keep_running = menu_draw(menu, esp_cfg, key.c_str(), ff.ready);
         }
@@ -184,6 +201,7 @@ int main() {
     }
 
     // Cleanup
+    input_destroy(input);
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplAndroid_Shutdown();
     ImGui::DestroyContext();

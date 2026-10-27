@@ -92,6 +92,7 @@ typedef void (*fn_getSurf)(void* ret_sp, void* sc);
 typedef void    (*fn_TX_ctor    )(void* tx);
 typedef void*   (*fn_TX_setLayer)(void* tx, void* sc, int32_t z);
 typedef void*   (*fn_TX_show   )(void* tx, void* sc);
+typedef void*   (*fn_TX_setFlags)(void* tx, void* sc, uint32_t flags, uint32_t mask);
 typedef int32_t (*fn_TX_apply  )(void* tx, bool sync, bool oneWay);
 
 // Safe self-read — avoids SIGSEGV on unmapped addresses
@@ -291,10 +292,16 @@ bool overlay_create(OverlayContext& ctx) {
         "_ZN7android21SurfaceComposerClient11Transaction5applyEb",  // Android 11
         "_ZN7android21SurfaceComposerClient11Transaction5applyEv",  // older
     };
+    const char* tx_setflags_s[] = {
+        "_ZN7android21SurfaceComposerClient11Transaction8setFlagsERKNS_2spINS_14SurfaceControlEEEjj",
+        "_ZN7android21SurfaceComposerClient11Transaction8setFlagsEPNS_14SurfaceControlEjj",
+        "_ZN7android21SurfaceComposerClient11Transaction8setFlagsEPKNS_14SurfaceControlEjj",
+    };
 
     auto tx_ctor     = (fn_TX_ctor    )try_sym(g_libgui, tx_ctor_s,     2, "TX::ctor");
     auto tx_setlayer = (fn_TX_setLayer)try_sym(g_libgui, tx_setlayer_s, 3, "TX::setLayer");
     auto tx_show     = (fn_TX_show    )try_sym(g_libgui, tx_show_s,     3, "TX::show");
+    auto tx_setflags = (fn_TX_setFlags)try_sym(g_libgui, tx_setflags_s, 3, "TX::setFlags");
     auto tx_apply    = (fn_TX_apply   )try_sym(g_libgui, tx_apply_s,    3, "TX::apply");
 
     // Heap-allocate Transaction (can be >2KB in Android 12 with vectors)
@@ -315,6 +322,13 @@ bool overlay_create(OverlayContext& ctx) {
     fprintf(stderr, "[OVL] setLayer OK\n");
     if (tx_show)     tx_show    (tx_buf, sc_arg);
     fprintf(stderr, "[OVL] show OK\n");
+    // NOT_TOUCHABLE (0x10) | NOT_FOCUSABLE (0x8) — touch passes through to game
+    if (tx_setflags) {
+        tx_setflags(tx_buf, sc_arg, 0x18u, 0x18u);
+        fprintf(stderr, "[OVL] setFlags NOT_TOUCHABLE|NOT_FOCUSABLE OK\n");
+    } else {
+        fprintf(stderr, "[OVL] setFlags not found — touch will be blocked\n");
+    }
     if (tx_apply)    tx_apply   (tx_buf, false, false);
     fprintf(stderr, "[OVL] Transaction applied\n");
     free(tx_buf);
