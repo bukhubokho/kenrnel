@@ -221,8 +221,25 @@ bool overlay_create(OverlayContext& ctx) {
     sp_t sc_sp = {nullptr};
     // sp<IBinder> null parent — just 8 bytes zeroed
     sp_t parent_sp = {nullptr};
-    // gui::LayerMetadata — contains std::unordered_map, minimum ~72 bytes zeroed
-    char meta_buf[256] = {};
+    // gui::LayerMetadata — contains std::unordered_map which MUST be constructed, not zeroed
+    char meta_buf[512] = {};
+    {
+        typedef void (*fn_LM_ctor)(void*);
+        void* fn_lm = dlsym(g_libgui, "_ZN7android3gui13LayerMetadataC1Ev");
+        if (!fn_lm) fn_lm = dlsym(g_libgui, "_ZN7android3gui13LayerMetadataC2Ev");
+        // also try without gui:: namespace (older Android)
+        if (!fn_lm) fn_lm = dlsym(g_libgui, "_ZN7android13LayerMetadataC1Ev");
+        if (!fn_lm) fn_lm = dlsym(g_libgui, "_ZN7android13LayerMetadataC2Ev");
+        if (fn_lm) {
+            ((fn_LM_ctor)fn_lm)(meta_buf);
+            fprintf(stderr, "[OVL] LayerMetadata ctor OK\n");
+        } else {
+            // fallback: unordered_map zero-init trick — set bucket_count=0, load=0
+            // std::unordered_map on libc++ has 56-byte layout; zeroing is not valid
+            // but with no ctor found we have to try
+            fprintf(stderr, "[OVL] WARN: LayerMetadata ctor not found — zeroed (may crash)\n");
+        }
+    }
     uint32_t outHint = 0;
 
     fprintf(stderr, "[OVL] calling createSurfaceChecked...\n");
