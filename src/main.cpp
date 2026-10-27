@@ -68,17 +68,6 @@ static bool driver_loaded() {
     return false;
 }
 
-// Camera reading — these offsets read the Unity Camera matrix from FF's memory
-static Camera read_camera(const FFState& st) {
-    Camera cam{};
-    cam.screen_w = FF::SCREEN_W;
-    cam.screen_h = FF::SCREEN_H;
-    // TODO: derive camera matrix offsets from current game version
-    // Placeholder identity matrix:
-    cam.proj[0]=1; cam.proj[5]=1; cam.proj[10]=1; cam.proj[15]=1;
-    cam.view[0]=1; cam.view[5]=1; cam.view[10]=1; cam.view[15]=1;
-    return cam;
-}
 
 int main() {
     LOGI("starting");
@@ -136,23 +125,25 @@ int main() {
     ESPConfig    esp_cfg{};
     bool         keep_running = true;
 
-    menu.visible = false;  // toggle with vol-down or touch
+    menu.visible = true;  // show immediately on launch
 
     LOGI("main loop start %dx%d", overlay.width, overlay.height);
 
     while (keep_running) {
-        // Re-find FF if not ready
-        if (!ff.ready) {
-            ff_init(ff);
-            if (!ff.ready) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                continue;
-            }
-        }
+        // Try to find FF in background — don't block rendering
+        if (!ff.ready) ff_init(ff);
 
-        // Read entities
-        auto entities = read_entities(ff);
-        Camera cam    = read_camera(ff);
+        // Read entities only when FF is ready
+        std::vector<Entity> entities;
+        Camera cam{};
+        cam.screen_w = FF::SCREEN_W;
+        cam.screen_h = FF::SCREEN_H;
+        cam.proj[0]=1; cam.proj[5]=1; cam.proj[10]=1; cam.proj[15]=1;
+        cam.view[0]=1; cam.view[5]=1; cam.view[10]=1; cam.view[15]=1;
+        if (ff.ready) {
+            entities = read_entities(ff);
+            cam = read_camera(ff);
+        }
         menu_apply(menu, esp_cfg);
 
         // Render frame
