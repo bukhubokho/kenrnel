@@ -30,6 +30,11 @@ target_include_directories(ffkernel PRIVATE
     src/imgui
 )
 
+# Force ImGui to use OpenGL ES 2.0 code path (no VAO, no glBindSampler)
+target_compile_definitions(ffkernel PRIVATE
+    IMGUI_IMPL_OPENGL_ES2
+)
+
 # Android system libraries
 target_link_libraries(ffkernel
     log
