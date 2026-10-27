@@ -1,5 +1,5 @@
-// External GPU overlay using SurfaceComposerClient (no JVM required)
-// Connects directly to SurfaceFlinger via Binder — same approach as bootanimation
+// External GPU overlay — SurfaceComposerClient, no JVM needed
+// Symbols confirmed from device: Android 12/13 Redmi Note 13 Pro 5G (garnet)
 #include "overlay.h"
 #include <android/log.h>
 #include <dlfcn.h>
@@ -12,98 +12,99 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-// ─── sp<T> layout: just a pointer + refcount ───────────────────────────────
-// Android's sp<> stores the pointer at offset 0
+// sp<T> on Android is just a single pointer field
 struct sp_t { void* ptr; };
 
-// ─── Function pointer types ────────────────────────────────────────────────
-typedef void*   (*fn_PS_self)();
-typedef void    (*fn_PS_start)(void*);
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFIRMED symbol from device grep:
+//  createSurfaceChecked returns status_t (int32_t) — no hidden ABI return ptr
+//
+// _ZN7android21SurfaceComposerClient20createSurfaceCheckedE
+//   RKNS_7String8E          const String8&   name
+//   jji                     uint32, uint32, int32  (w, h, format)
+//   PNS_2spINS_14SurfaceControlEEE   sp<SurfaceControl>* out
+//   i                       int32  flags
+//   RKNS4_INS_7IBinderEEE   const sp<IBinder>& parent
+//   NS_3gui13LayerMetadataE gui::LayerMetadata (non-trivial → hidden ptr in ABI)
+//   Pj                      uint32_t* outHint
+//
+// AArch64 AAPCS64 calling convention for createSurfaceChecked:
+//   x0 = thiz
+//   x1 = &name  (String8&)
+//   x2 = w
+//   x3 = h
+//   x4 = format
+//   x5 = outSurface (sp<SC>*)
+//   x6 = flags
+//   x7 = &parent (sp<IBinder>&) — reference, stays as-is
+//   [sp+0] = &meta (non-trivial by-value → passed as ptr, goes on stack after x7 fills)
+//   [sp+8] = outHint
+// ─────────────────────────────────────────────────────────────────────────────
 
-// SurfaceComposerClient constructor / destructor
-typedef void    (*fn_SCC_ctor)(void*);
-typedef void    (*fn_SCC_dtor)(void*);
+// typedef matching the actual AArch64 ABI layout described above
+typedef int32_t (*fn_createChecked)(
+    void*     thiz,        // x0
+    void*     name,        // x1
+    uint32_t  w,           // x2
+    uint32_t  h,           // x3
+    int32_t   format,      // x4
+    void*     outSurface,  // x5  sp<SurfaceControl>*
+    int32_t   flags,       // x6
+    void*     parent,      // x7  const sp<IBinder>&
+    void*     meta,        // stack[0]  LayerMetadata* (indirect)
+    uint32_t* outHint      // stack[8]
+);
 
-// String8 ctor/dtor
-typedef void    (*fn_S8_ctor)(void*, const char*);
-typedef void    (*fn_S8_dtor)(void*);
+// getSurface() const → sp<Surface>
+// sp<Surface> is non-trivial → returned via x8 (indirect result register)
+// Use inline asm wrapper below
+typedef void (*fn_getSurf)(void* ret_sp, void* sc);
 
-// createSurface returns sp<SurfaceControl> (= pointer in first 8 bytes of sp_t)
-// Variant A: Android 10/11
-typedef sp_t    (*fn_create_A)(void* thiz, void* name, uint32_t w, uint32_t h,
-                               int32_t fmt, uint32_t flags, void* parent,
-                               void* meta, uint32_t* outHint);
-// Variant B: Android 12
-typedef sp_t    (*fn_create_B)(void* thiz, void* name, int32_t w, int32_t h,
-                               int32_t fmt, uint32_t flags, void* parent,
-                               void* meta, uint32_t* outHint);
-
-// SurfaceControl::getSurface() → sp<Surface> (= ANativeWindow* at ptr[0])
-typedef sp_t    (*fn_SC_getSurf)(void* sc);
-
-// Transaction methods (Android 12: take sp<SurfaceControl>* or raw ptr)
+// Transaction methods — scalar / void returns, straightforward
+typedef void    (*fn_TX_ctor    )(void* tx);
 typedef void*   (*fn_TX_setLayer)(void* tx, void* sc, int32_t z);
 typedef void*   (*fn_TX_show   )(void* tx, void* sc);
-typedef void*   (*fn_TX_setAlpha)(void* tx, void* sc, float a);
-typedef void*   (*fn_TX_setFill)(void* tx, void* sc, uint32_t f, uint32_t m);
-typedef int32_t (*fn_TX_apply )(void* tx, bool sync);
+typedef int32_t (*fn_TX_apply  )(void* tx, bool sync);
 
-// ─── Globals ──────────────────────────────────────────────────────────────
+// ProcessState
+typedef void* (*fn_PS_self )();
+typedef void  (*fn_PS_start)(void*);
+
+// String8(const char*)
+typedef void (*fn_S8_ctor)(void* s8, const char* str);
+typedef void (*fn_S8_dtor)(void* s8);
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 static void* g_libgui    = nullptr;
 static void* g_libbinder = nullptr;
-static void* g_libui     = nullptr;
 
-// Try several mangled name variants for a symbol
-static void* sym(void* lib, const char** names, int n) {
+static void* try_sym(void* lib, const char* const* names, int n, const char* what) {
     for (int i = 0; i < n; i++) {
         void* s = dlsym(lib, names[i]);
-        if (s) return s;
+        if (s) { LOGI("found %s [%d]", what, i); return s; }
     }
+    LOGE("NOT FOUND: %s", what);
     return nullptr;
 }
 
 static bool init_binder() {
     g_libbinder = dlopen("libbinder.so", RTLD_NOW | RTLD_GLOBAL);
     if (!g_libbinder) { LOGE("libbinder.so: %s", dlerror()); return false; }
-
-    const char* self_names[] = {
-        "_ZN7android12ProcessState4selfEv",
-    };
-    const char* start_names[] = {
-        "_ZN7android12ProcessState14startThreadPoolEv",
-    };
-    auto ps_self  = (fn_PS_self) sym(g_libbinder, self_names,  1);
-    auto ps_start = (fn_PS_start)sym(g_libbinder, start_names, 1);
-    if (ps_self && ps_start) {
-        void* ps = ps_self();
-        ps_start(ps);
-        LOGI("binder thread pool started");
-    }
+    const char* self_s[]  = { "_ZN7android12ProcessState4selfEv" };
+    const char* start_s[] = { "_ZN7android12ProcessState14startThreadPoolEv" };
+    auto ps_self  = (fn_PS_self )try_sym(g_libbinder, self_s,  1, "ProcessState::self");
+    auto ps_start = (fn_PS_start)try_sym(g_libbinder, start_s, 1, "ProcessState::startThreadPool");
+    if (ps_self && ps_start) { ps_start(ps_self()); LOGI("binder OK"); }
     return true;
 }
 
-// Screen size from fb0 or /sys
 static void get_screen_size(int& w, int& h) {
-    w = 1080; h = 2400; // safe default for Redmi Note 13 Pro 5G
-
-    // Try reading from /sys/class/graphics/fb0/virtual_size
+    w = 1080; h = 2400;
     FILE* f = fopen("/sys/class/graphics/fb0/virtual_size", "r");
-    if (f) {
-        int tw = 0, th = 0;
-        if (fscanf(f, "%d,%d", &tw, &th) == 2 && tw > 0 && th > 0) {
-            w = tw; h = th;
-        }
-        fclose(f);
-        return;
-    }
-    // Try /sys/class/drm/card0-DSI-1/modes
+    if (f) { fscanf(f, "%d,%d", &w, &h); fclose(f); return; }
     f = fopen("/sys/class/drm/card0-DSI-1/modes", "r");
-    if (f) {
-        int tw = 0, th = 0;
-        fscanf(f, "%dx%d", &tw, &th);
-        if (tw > 0 && th > 0) { w = tw; h = th; }
-        fclose(f);
-    }
+    if (f) { fscanf(f, "%dx%d", &w, &h); fclose(f); }
 }
 
 bool overlay_create(OverlayContext& ctx) {
@@ -112,132 +113,154 @@ bool overlay_create(OverlayContext& ctx) {
 
     if (!init_binder()) return false;
 
-    g_libui  = dlopen("libui.so",   RTLD_NOW | RTLD_GLOBAL);
-    g_libgui = dlopen("libgui.so",  RTLD_NOW | RTLD_GLOBAL);
+    dlopen("libui.so",   RTLD_NOW | RTLD_GLOBAL);
+    dlopen("libutils.so",RTLD_NOW | RTLD_GLOBAL);
+    g_libgui = dlopen("libgui.so", RTLD_NOW | RTLD_GLOBAL);
     if (!g_libgui) { LOGE("libgui.so: %s", dlerror()); return false; }
 
-    // ── SurfaceComposerClient constructor ───────────────────────────────
-    const char* scc_ctor_names[] = {
+    // ── SurfaceComposerClient ctor ─────────────────────────────────────
+    const char* scc_ctor_s[] = {
         "_ZN7android21SurfaceComposerClientC1Ev",
         "_ZN7android21SurfaceComposerClientC2Ev",
     };
-    auto scc_ctor = (fn_SCC_ctor)sym(g_libgui, scc_ctor_names, 2);
-    if (!scc_ctor) { LOGE("SCC ctor not found"); return false; }
-
-    // Allocate SCC on heap (typical size ~256 bytes on Android 12)
+    auto scc_ctor = (fn_TX_ctor)try_sym(g_libgui, scc_ctor_s, 2, "SCC::ctor");
+    if (!scc_ctor) return false;
     void* scc = calloc(1, 512);
     scc_ctor(scc);
-    LOGI("SurfaceComposerClient created");
+    LOGI("SurfaceComposerClient @ %p", scc);
 
-    // ── String8("KernelOverlay") ────────────────────────────────────────
-    const char* s8_ctor_names[] = {
+    // ── String8 ─────────────────────────────────────────────────────────
+    void* libutils = dlopen("libutils.so", RTLD_NOLOAD);
+    const char* s8_ctor_s[] = {
         "_ZN7android7String8C1EPKc",
         "_ZN7android7String8C2EPKc",
     };
-    auto s8_ctor = (fn_S8_ctor)sym(g_libgui, s8_ctor_names, 2);
-    if (!s8_ctor) s8_ctor = (fn_S8_ctor)sym(g_libui, s8_ctor_names, 2);
-
-    // String8 layout: just a const char* mString at offset 0
+    auto s8_ctor = (fn_S8_ctor)(try_sym(g_libgui,    s8_ctor_s, 2, "String8::ctor") ?:
+                                try_sym(libutils,     s8_ctor_s, 2, "String8::ctor(utils)"));
+    // String8 internal layout on Android 12: mString is at offset 0 (char*)
+    // Passing a zeroed 64-byte buffer + ctor should be fine
     char name_buf[64] = {};
     if (s8_ctor) s8_ctor(name_buf, "KernelOverlay");
 
-    // ── createSurface ───────────────────────────────────────────────────
-    const char* create_names[] = {
-        // Android 12 (most common)
-        "_ZN7android21SurfaceComposerClient13createSurfaceERKNS_7String8EjjijPNS_14SurfaceControlENS_13LayerMetadataEPj",
-        // Android 11
-        "_ZN7android21SurfaceComposerClient13createSurfaceERKNS_7String8EjjijPKNS_14SurfaceControlENS_13LayerMetadataEPj",
-        // Android 10
-        "_ZN7android21SurfaceComposerClient13createSurfaceERKNS_7String8EjjijPNS_14SurfaceControlEiPj",
-        // Android 13
-        "_ZN7android21SurfaceComposerClient13createSurfaceERKNS_7String8EjjijRKNS_2spINS_14SurfaceControlEEENS_13LayerMetadataEPj",
+    // ── createSurfaceChecked (confirmed on device) ───────────────────────
+    const char* create_s[] = {
+        // CONFIRMED on device
+        "_ZN7android21SurfaceComposerClient20createSurfaceCheckedERKNS_7String8EjjiPNS_2spINS_14SurfaceControlEEEiRKNS4_INS_7IBinderEEENS_3gui13LayerMetadataEPj",
+        // fallback without gui:: namespace (older Android)
+        "_ZN7android21SurfaceComposerClient20createSurfaceCheckedERKNS_7String8EjjiPNS_2spINS_14SurfaceControlEEEiRKNS4_INS_7IBinderEEENS_13LayerMetadataEPj",
     };
-    auto create_surf = (fn_create_A)sym(g_libgui, create_names, 4);
-    if (!create_surf) { LOGE("createSurface not found"); return false; }
+    auto create_fn = (fn_createChecked)try_sym(g_libgui, create_s, 2, "createSurfaceChecked");
+    if (!create_fn) return false;
 
-    // LayerMetadata = 64 bytes zeroed
-    char meta[64] = {};
-    // flags: ISurfaceComposerClient::eOpaque = 0x400 is NOT what we want
-    // Use flags = 0 for a regular layer
+    // sp<SurfaceControl> result — just 8 bytes (single pointer)
+    sp_t sc_sp = {nullptr};
+    // sp<IBinder> null parent — just 8 bytes zeroed
+    sp_t parent_sp = {nullptr};
+    // gui::LayerMetadata — contains std::unordered_map, minimum ~72 bytes zeroed
+    char meta_buf[256] = {};
+    uint32_t outHint = 0;
+
     // PixelFormat RGBA_8888 = 1
-    sp_t sc_sp = create_surf(scc, name_buf,
-                             (uint32_t)ctx.width, (uint32_t)ctx.height,
-                             1 /*RGBA_8888*/, 0 /*flags*/,
-                             nullptr /*parent*/, meta, nullptr);
+    int32_t status = create_fn(
+        scc,
+        (void*)name_buf,
+        (uint32_t)ctx.width,
+        (uint32_t)ctx.height,
+        1,              // RGBA_8888
+        &sc_sp,         // out sp<SurfaceControl>
+        0,              // flags
+        &parent_sp,     // null parent
+        meta_buf,       // LayerMetadata (passed as indirect ptr on stack)
+        &outHint
+    );
+    LOGI("createSurfaceChecked status=%d sc=%p", status, sc_sp.ptr);
+    if (status != 0 || !sc_sp.ptr) {
+        LOGE("createSurfaceChecked failed status=%d", status);
+        return false;
+    }
     void* sc = sc_sp.ptr;
-    if (!sc) { LOGE("createSurface returned null"); return false; }
-    LOGI("SurfaceControl = %p", sc);
 
-    // ── Transaction: setLayer(INT_MAX) + show() ─────────────────────────
-    const char* tx_setlayer_names[] = {
-        "_ZN7android21SurfaceComposerClient11Transaction8setLayerEPKNS_14SurfaceControlEi",
+    // ── Transaction ─────────────────────────────────────────────────────
+    const char* tx_ctor_s[] = {
+        "_ZN7android21SurfaceComposerClient11TransactionC1Ev",
+        "_ZN7android21SurfaceComposerClient11TransactionC2Ev",
+    };
+    const char* tx_setlayer_s[] = {
         "_ZN7android21SurfaceComposerClient11Transaction8setLayerEPNS_14SurfaceControlEi",
+        "_ZN7android21SurfaceComposerClient11Transaction8setLayerEPKNS_14SurfaceControlEi",
         "_ZN7android21SurfaceComposerClient11Transaction8setLayerERKNS_2spINS_14SurfaceControlEEEi",
     };
-    const char* tx_show_names[] = {
-        "_ZN7android21SurfaceComposerClient11Transaction4showEPKNS_14SurfaceControlE",
+    const char* tx_show_s[] = {
         "_ZN7android21SurfaceComposerClient11Transaction4showEPNS_14SurfaceControlE",
+        "_ZN7android21SurfaceComposerClient11Transaction4showEPKNS_14SurfaceControlE",
         "_ZN7android21SurfaceComposerClient11Transaction4showERKNS_2spINS_14SurfaceControlEEE",
     };
-    const char* tx_apply_names[] = {
+    const char* tx_apply_s[] = {
         "_ZN7android21SurfaceComposerClient11Transaction5applyEb",
         "_ZN7android21SurfaceComposerClient11Transaction5applyEv",
     };
 
-    auto tx_setlayer = (fn_TX_setLayer)sym(g_libgui, tx_setlayer_names, 3);
-    auto tx_show     = (fn_TX_show    )sym(g_libgui, tx_show_names,     3);
-    auto tx_apply    = (fn_TX_apply   )sym(g_libgui, tx_apply_names,    2);
+    auto tx_ctor     = (fn_TX_ctor    )try_sym(g_libgui, tx_ctor_s,     2, "TX::ctor");
+    auto tx_setlayer = (fn_TX_setLayer)try_sym(g_libgui, tx_setlayer_s, 3, "TX::setLayer");
+    auto tx_show     = (fn_TX_show    )try_sym(g_libgui, tx_show_s,     3, "TX::show");
+    auto tx_apply    = (fn_TX_apply   )try_sym(g_libgui, tx_apply_s,    2, "TX::apply");
 
-    // Transaction is stack-allocated (~512 bytes typical)
-    char tx_buf[1024] = {};
-    // Try to find Transaction ctor
-    const char* tx_ctor_names[] = {
-        "_ZN7android21SurfaceComposerClient11TransactionC1Ev",
-        "_ZN7android21SurfaceComposerClient11TransactionC2Ev",
-    };
-    auto tx_ctor = (fn_SCC_ctor)sym(g_libgui, tx_ctor_names, 2);
+    char tx_buf[2048] = {};
     if (tx_ctor) tx_ctor(tx_buf);
-
-    if (tx_setlayer) tx_setlayer(tx_buf, sc, 0x7fffffff); // INT_MAX layer
+    if (tx_setlayer) tx_setlayer(tx_buf, sc, 0x7fffffff);
     if (tx_show)     tx_show    (tx_buf, sc);
     if (tx_apply)    tx_apply   (tx_buf, false);
-    LOGI("Transaction applied");
+    LOGI("Transaction applied, layer=INT_MAX");
 
-    // ── getSurface() → ANativeWindow* ───────────────────────────────────
-    const char* getsurf_names[] = {
+    // ── getSurface() → ANativeWindow ────────────────────────────────────
+    // getSurface returns sp<Surface> via x8 (indirect result register on ARM64)
+    // Surface inherits ANativeWindow — ANW magic = 0x00574e41 at offset 0
+    const char* getsurf_s[] = {
         "_ZNK7android14SurfaceControl9getSurfaceEv",
         "_ZN7android14SurfaceControl9getSurfaceEv",
     };
-    auto get_surf = (fn_SC_getSurf)sym(g_libgui, getsurf_names, 2);
-    if (!get_surf) {
-        // Fallback: Surface* is stored in SurfaceControl at a known offset
-        // On Android 12, SurfaceControl holds sp<Surface> at offset 0x10
-        // Try reading it directly
-        void** sc_fields = (void**)sc;
-        for (int off = 0; off < 16; off++) {
-            void* candidate = sc_fields[off];
-            if (!candidate) continue;
-            // ANativeWindow has magic = 0x00574e41 at offset 0
-            uint32_t magic = *(uint32_t*)candidate;
-            if (magic == 0x00574e41) {
-                ctx.window = (ANativeWindow*)candidate;
-                LOGI("ANativeWindow found via scan at offset %d: %p", off, ctx.window);
-                ANativeWindow_acquire(ctx.window);
-                return true;
-            }
-        }
-        LOGE("getSurface not found and ANW scan failed");
-        return false;
+    auto get_surf_fn = (fn_getSurf)try_sym(g_libgui, getsurf_s, 2, "SC::getSurface");
+
+    sp_t surf_sp = {nullptr};
+    if (get_surf_fn) {
+        // ARM64 ABI: getSurface() returns sp<Surface> via x8 (indirect result register)
+        // We pass &surf_sp as the x8 register (indirect result location)
+        // GCC/Clang handle this when we call via a typedef that returns a struct:
+        //   typedef sp_t (*fn_getSurf_ret)(void* sc);
+        typedef sp_t (*fn_getSurf_ret_t)(void*);
+        auto gsr = (fn_getSurf_ret_t)(void*)get_surf_fn;
+        surf_sp = gsr(sc);
     }
 
-    sp_t surf_sp = get_surf(sc);
-    ctx.window = (ANativeWindow*)surf_sp.ptr;
-    if (!ctx.window) { LOGE("getSurface returned null"); return false; }
+    if (surf_sp.ptr) {
+        // Check ANativeWindow magic
+        uint32_t magic = *(uint32_t*)surf_sp.ptr;
+        LOGI("getSurface ptr=%p magic=0x%08x", surf_sp.ptr, magic);
+        if (magic == 0x00574e41 || magic == 0xDEF10001) {
+            ctx.window = (ANativeWindow*)surf_sp.ptr;
+            ANativeWindow_acquire(ctx.window);
+            LOGI("ANativeWindow OK via getSurface");
+            return true;
+        }
+    }
 
-    // Retain a reference
-    ANativeWindow_acquire(ctx.window);
-    LOGI("ANativeWindow = %p", ctx.window);
-    return true;
+    // ── Fallback: scan SurfaceControl fields for ANativeWindow ──────────
+    LOGI("getSurface fallback: scanning SurfaceControl @ %p", sc);
+    uint64_t* sc_fields = (uint64_t*)sc;
+    for (int off = 0; off < 32; off++) {
+        void* candidate = (void*)sc_fields[off];
+        if (!candidate || ((uintptr_t)candidate & 0xfff)) continue;
+        uint32_t magic = *(uint32_t*)candidate;
+        if (magic == 0x00574e41) {
+            ctx.window = (ANativeWindow*)candidate;
+            ANativeWindow_acquire(ctx.window);
+            LOGI("ANativeWindow found at SC[%d]=%p", off, ctx.window);
+            return true;
+        }
+    }
+
+    LOGE("could not find ANativeWindow");
+    return false;
 }
 
 bool overlay_init_egl(OverlayContext& ctx) {
@@ -254,26 +277,23 @@ bool overlay_init_egl(OverlayContext& ctx) {
         EGL_DEPTH_SIZE,      0,
         EGL_NONE
     };
-    EGLConfig cfg;
-    EGLint    ncfg = 0;
+    EGLConfig cfg; EGLint ncfg = 0;
     eglChooseConfig(ctx.display, attribs, &cfg, 1, &ncfg);
     if (!ncfg) { LOGE("eglChooseConfig failed"); return false; }
 
     ctx.surface = eglCreateWindowSurface(ctx.display, cfg, ctx.window, nullptr);
     if (ctx.surface == EGL_NO_SURFACE) {
-        LOGE("eglCreateWindowSurface failed: %x", eglGetError());
+        LOGE("eglCreateWindowSurface: 0x%x", eglGetError());
         return false;
     }
-
-    const EGLint ctx_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
-    ctx.context = eglCreateContext(ctx.display, cfg, EGL_NO_CONTEXT, ctx_attribs);
+    const EGLint ctx_a[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
+    ctx.context = eglCreateContext(ctx.display, cfg, EGL_NO_CONTEXT, ctx_a);
     if (!eglMakeCurrent(ctx.display, ctx.surface, ctx.surface, ctx.context)) {
-        LOGE("eglMakeCurrent failed: %x", eglGetError());
+        LOGE("eglMakeCurrent: 0x%x", eglGetError());
         return false;
     }
-
     ctx.ready = true;
-    LOGI("EGL ready");
+    LOGI("EGL OK");
     return true;
 }
 
