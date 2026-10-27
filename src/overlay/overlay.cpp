@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #define LOG_TAG "FFKRN"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
@@ -132,7 +133,21 @@ bool overlay_create(OverlayContext& ctx) {
     if (!scc_ctor) { fprintf(stderr, "[OVL] ERR: SCC::ctor not found\n"); return false; }
     void* scc = calloc(1, 512);
     scc_ctor(scc);
-    fprintf(stderr, "[OVL] SCC created @ %p\n", scc);
+    fprintf(stderr, "[OVL] SCC created @ %p (uid=%d)\n", scc, (int)getuid());
+
+    // initCheck() — returns status_t: 0=OK, -19=ENODEV means SurfaceFlinger refused (SELinux/perms)
+    const char* initchk_s[] = { "_ZNK7android21SurfaceComposerClient9initCheckEv" };
+    typedef int32_t (*fn_initCheck)(void*);
+    auto fn_ic = (fn_initCheck)dlsym(g_libgui, initchk_s[0]);
+    if (fn_ic) {
+        int32_t ic = fn_ic(scc);
+        fprintf(stderr, "[OVL] SCC initCheck=%d%s\n", ic,
+                ic == 0 ? " (OK)" : ic == -19 ? " (ENODEV — need root/SELinux)" : " (ERR)");
+        if (ic != 0) {
+            fprintf(stderr, "[OVL] HINT: run with: su -c /data/local/tmp/ffkernel.sh\n");
+            return false;
+        }
+    }
 
     // ── String8 ─────────────────────────────────────────────────────────
     void* libutils = dlopen("libutils.so", RTLD_NOLOAD);
