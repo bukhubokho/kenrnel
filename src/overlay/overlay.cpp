@@ -8,10 +8,7 @@
 #include <cstdio>
 #include <sys/stat.h>
 #include <sys/uio.h>
-#include <sys/ioctl.h>
-#include <fcntl.h>
 #include <unistd.h>
-#include <linux/fb.h>
 
 #define LOG_TAG "FFKRN"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
@@ -473,73 +470,47 @@ bool overlay_init_egl(OverlayContext& ctx) {
     return true;
 }
 
-static int overlay_read_rotation() {
-    // 1. framebuffer ioctl — xres/yres reflect current display orientation
-    {
-        const char* fb_paths[] = {
-            "/dev/graphics/fb0", "/dev/fb0", nullptr
-        };
-        for (int i = 0; fb_paths[i]; i++) {
-            int fd = open(fb_paths[i], O_RDONLY);
-            if (fd < 0) continue;
-            struct fb_var_screeninfo vinfo{};
-            if (ioctl(fd, FBIOGET_VSCREENINFO, &vinfo) == 0) {
-                close(fd);
-                if (vinfo.rotate != 0) return (int)(vinfo.rotate & 3);
-                // rotate field sometimes stays 0 even in landscape —
-                // use xres/yres as fallback (they DO reflect orientation)
-                if (vinfo.xres > vinfo.yres) return 1;  // landscape → 90° CW
-                return 0;
-            }
-            close(fd);
-        }
+// NATIVE_WINDOW_TRANSFORM_HINT = 8 (from Android window.h)
+// Returns: 0=portrait, 4=ROT_90(landscape CW), 3=ROT_180, 7=ROT_270(landscape CCW)
+// Reads directly from ANativeWindow's own function table — no permissions needed.
+static int get_rotation_from_hint(ANativeWindow* win) {
+    if (!win || !win->query) return -1;
+    int hint = 0;
+    if (win->query(win, 8 /*NATIVE_WINDOW_TRANSFORM_HINT*/, &hint) != 0) return -1;
+    switch (hint & 7) {
+    case 0: return 0;
+    case 4: return 1;   // HAL_TRANSFORM_ROT_90  → display 90° CW
+    case 3: return 2;   // HAL_TRANSFORM_ROT_180 → display 180°
+    case 7: return 3;   // HAL_TRANSFORM_ROT_270 → display 90° CCW
+    default: return 0;
     }
-    // 2. sysfs fallback
-    {
-        const char* paths[] = {
-            "/sys/class/graphics/fb0/rotate",
-            "/sys/devices/virtual/graphics/fb0/rotate",
-            nullptr
-        };
-        for (int i = 0; paths[i]; i++) {
-            FILE* f = fopen(paths[i], "r");
-            if (!f) continue;
-            int r = 0; fscanf(f, "%d", &r); fclose(f);
-            return r & 3;
-        }
-    }
-    return -1;
 }
 
 void overlay_query_size(OverlayContext& ctx) {
     if (!ctx.window) return;
 
-    // Store natural dims on first call
+    // Store natural (portrait) dims once
     if (ctx.nat_w == 0) { ctx.nat_w = ctx.width; ctx.nat_h = ctx.height; }
 
-    int rot = overlay_read_rotation();
-    if (rot < 0) rot = ctx.cur_rot;  // sysfs not available — keep last known
+    int rot = get_rotation_from_hint(ctx.window);
+    if (rot < 0) rot = ctx.cur_rot;
 
     if (rot != ctx.cur_rot) {
         ctx.cur_rot = rot;
-        // Resize ANativeWindow buffer to match display orientation
         int new_w = (rot == 1 || rot == 3) ? ctx.nat_h : ctx.nat_w;
         int new_h = (rot == 1 || rot == 3) ? ctx.nat_w : ctx.nat_h;
-        // WINDOW_FORMAT_RGBA_8888 = 1
-        ANativeWindow_setBuffersGeometry(ctx.window, new_w, new_h, 1);
+        ANativeWindow_setBuffersGeometry(ctx.window, new_w, new_h, 1 /*RGBA_8888*/);
         ctx.width  = new_w;
         ctx.height = new_h;
         fprintf(stderr, "[OVL] rotation=%d → buffer %dx%d\n", rot, new_w, new_h);
     }
 
-    // Verify from EGL (reflects buffer size after next swapBuffers)
+    // Sync from EGL (updates after first swap with new geometry)
     if (ctx.display != EGL_NO_DISPLAY && ctx.surface != EGL_NO_SURFACE) {
         EGLint w = 0, h = 0;
         eglQuerySurface(ctx.display, ctx.surface, EGL_WIDTH,  &w);
         eglQuerySurface(ctx.display, ctx.surface, EGL_HEIGHT, &h);
-        if (w > 0 && h > 0 && (w != ctx.width || h != ctx.height)) {
-            ctx.width = w; ctx.height = h;
-        }
+        if (w > 0 && h > 0) { ctx.width = w; ctx.height = h; }
     }
 }
 
