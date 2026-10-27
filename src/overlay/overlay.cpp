@@ -470,13 +470,30 @@ bool overlay_init_egl(OverlayContext& ctx) {
     return true;
 }
 
-// NATIVE_WINDOW_TRANSFORM_HINT = 8 (from Android window.h)
-// Returns: 0=portrait, 4=ROT_90(landscape CW), 3=ROT_180, 7=ROT_270(landscape CCW)
-// Reads directly from ANativeWindow's own function table — no permissions needed.
+// NDK only forward-declares ANativeWindow. Use the stable internal layout
+// (unchanged since Android 2.x) to access the query function pointer.
+struct ANW_Internal {
+    uint32_t flags;
+    int      minSwapInterval;
+    int      maxSwapInterval;
+    float    xdpi, ydpi;
+    intptr_t oem[4];
+    int (*setSwapInterval)(void*, int);
+    int (*dequeueBuffer_DEPRECATED)(void*, void**);
+    int (*lockBuffer_DEPRECATED)(void*, void*);
+    int (*queueBuffer_DEPRECATED)(void*, void*);
+    int (*query)(const void*, int what, int* value);
+};
+
+// NATIVE_WINDOW_TRANSFORM_HINT = 8
+// hint values: 0=portrait, 4=ROT_90(landscape CW), 3=ROT_180, 7=ROT_270(landscape CCW)
+// No permissions needed — reads from our own window object in memory.
 static int get_rotation_from_hint(ANativeWindow* win) {
-    if (!win || !win->query) return -1;
+    if (!win) return -1;
+    auto* w = reinterpret_cast<ANW_Internal*>(win);
+    if (!w->query) return -1;
     int hint = 0;
-    if (win->query(win, 8 /*NATIVE_WINDOW_TRANSFORM_HINT*/, &hint) != 0) return -1;
+    if (w->query(win, 8 /*NATIVE_WINDOW_TRANSFORM_HINT*/, &hint) != 0) return -1;
     switch (hint & 7) {
     case 0: return 0;
     case 4: return 1;   // HAL_TRANSFORM_ROT_90  → display 90° CW
