@@ -118,7 +118,11 @@ int main() {
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = {(float)overlay.width, (float)overlay.height};
     io.IniFilename = nullptr;
-    io.FontGlobalScale = (float)overlay.height / 1080.f * 1.5f;
+    // Scale font for phone DPI — 2712px tall phone, aim for ~1.8x at 1080p baseline
+    float dpi_scale = (float)overlay.height / 2400.f;  // 2400 = baseline for this device
+    if (dpi_scale < 0.8f) dpi_scale = 0.8f;
+    if (dpi_scale > 2.0f) dpi_scale = 2.0f;
+    io.FontGlobalScale = dpi_scale;
 
     fprintf(stderr, "[KERNEL] ImGui_ImplAndroid_Init...\n");
     ImGui_ImplAndroid_Init(overlay.window);

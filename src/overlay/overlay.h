@@ -13,10 +13,11 @@ struct OverlayContext {
     int             height      = 0;
     bool            ready       = false;
     // Internal — kept for realtime flag toggling
-    void*           sc_sp_ptr   = nullptr;  // pointer to heap-allocated sp<SurfaceControl>
-    void*           tx_setflags = nullptr;
-    void*           tx_apply    = nullptr;
-    void*           tx_buf      = nullptr;  // persistent Transaction buffer
+    void*           sc_sp_ptr    = nullptr;  // pointer to heap-allocated sp<SurfaceControl>
+    void*           tx_setflags  = nullptr;
+    void*           tx_dropinput = nullptr;
+    void*           tx_apply     = nullptr;
+    void*           tx_buf       = nullptr;  // persistent Transaction buffer
 };
 
 // Create TYPE_APPLICATION_OVERLAY window via Android SurfaceFlinger JNI

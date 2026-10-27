@@ -297,12 +297,20 @@ bool overlay_create(OverlayContext& ctx) {
         "_ZN7android21SurfaceComposerClient11Transaction8setFlagsEPNS_14SurfaceControlEjj",
         "_ZN7android21SurfaceComposerClient11Transaction8setFlagsEPKNS_14SurfaceControlEjj",
     };
+    // setDropInputMode: drops all input events — proper touch passthrough on Android 12+
+    // DropInputMode::ALL = 1, NONE = 0
+    const char* tx_dropinput_s[] = {
+        "_ZN7android21SurfaceComposerClient11Transaction16setDropInputModeERKNS_2spINS_14SurfaceControlEEENS_3gui10WindowInfo13DropInputModeE",
+        "_ZN7android21SurfaceComposerClient11Transaction16setDropInputModeEPNS_14SurfaceControlENS_3gui10WindowInfo13DropInputModeE",
+    };
 
-    auto tx_ctor     = (fn_TX_ctor    )try_sym(g_libgui, tx_ctor_s,     2, "TX::ctor");
-    auto tx_setlayer = (fn_TX_setLayer)try_sym(g_libgui, tx_setlayer_s, 3, "TX::setLayer");
-    auto tx_show     = (fn_TX_show    )try_sym(g_libgui, tx_show_s,     3, "TX::show");
-    auto tx_setflags = (fn_TX_setFlags)try_sym(g_libgui, tx_setflags_s, 3, "TX::setFlags");
-    auto tx_apply    = (fn_TX_apply   )try_sym(g_libgui, tx_apply_s,    3, "TX::apply");
+    auto tx_ctor      = (fn_TX_ctor    )try_sym(g_libgui, tx_ctor_s,      2, "TX::ctor");
+    auto tx_setlayer  = (fn_TX_setLayer)try_sym(g_libgui, tx_setlayer_s,  3, "TX::setLayer");
+    auto tx_show      = (fn_TX_show    )try_sym(g_libgui, tx_show_s,      3, "TX::show");
+    auto tx_setflags  = (fn_TX_setFlags)try_sym(g_libgui, tx_setflags_s,  3, "TX::setFlags");
+    typedef void* (*fn_TX_dropinput)(void* tx, void* sc, int32_t mode);
+    auto tx_dropinput = (fn_TX_dropinput)try_sym(g_libgui, tx_dropinput_s, 2, "TX::setDropInputMode");
+    auto tx_apply     = (fn_TX_apply   )try_sym(g_libgui, tx_apply_s,     3, "TX::apply");
 
     // Heap-allocate Transaction (can be >2KB in Android 12 with vectors)
     void* tx_buf = calloc(1, 4096);
@@ -322,12 +330,18 @@ bool overlay_create(OverlayContext& ctx) {
     fprintf(stderr, "[OVL] setLayer OK\n");
     if (tx_show)     tx_show    (tx_buf, sc_arg);
     fprintf(stderr, "[OVL] show OK\n");
-    // NOT_TOUCHABLE (0x10) | NOT_FOCUSABLE (0x8) — touch passes through to game
-    if (tx_setflags) {
-        tx_setflags(tx_buf, sc_arg, 0x18u, 0x18u);
-        fprintf(stderr, "[OVL] setFlags NOT_TOUCHABLE|NOT_FOCUSABLE OK\n");
+    // setDropInputMode(ALL=1) — proper input passthrough on Android 12+
+    if (tx_dropinput) {
+        tx_dropinput(tx_buf, sc_arg, 1);  // DropInputMode::ALL
+        fprintf(stderr, "[OVL] setDropInputMode(ALL) OK\n");
     } else {
-        fprintf(stderr, "[OVL] setFlags not found — touch will be blocked\n");
+        // Fallback: layer rendering flags (may not affect input routing)
+        if (tx_setflags) {
+            tx_setflags(tx_buf, sc_arg, 0x18u, 0x18u);
+            fprintf(stderr, "[OVL] setFlags fallback OK\n");
+        } else {
+            fprintf(stderr, "[OVL] WARN: no input passthrough method found\n");
+        }
     }
     if (tx_apply)    tx_apply   (tx_buf, false, false);
     fprintf(stderr, "[OVL] Transaction applied\n");
@@ -335,10 +349,11 @@ bool overlay_create(OverlayContext& ctx) {
     // sc_sp is on stack — copy to heap so it outlives this function
     sp_t* sc_sp_heap = new sp_t;
     *sc_sp_heap = sc_sp;
-    ctx.sc_sp_ptr   = sc_sp_heap;
-    ctx.tx_setflags = (void*)tx_setflags;
-    ctx.tx_apply    = (void*)tx_apply;
-    ctx.tx_buf      = tx_buf;
+    ctx.sc_sp_ptr    = sc_sp_heap;
+    ctx.tx_setflags  = (void*)tx_setflags;
+    ctx.tx_dropinput = (void*)tx_dropinput;
+    ctx.tx_apply     = (void*)tx_apply;
+    ctx.tx_buf       = tx_buf;
     // Note: tx_buf is NOT freed here — kept for overlay_set_touchable()
 
     // ── getSurface() → ANativeWindow ────────────────────────────────────
@@ -454,14 +469,21 @@ void overlay_end_frame(const OverlayContext& ctx) {
 }
 
 void overlay_set_touchable(OverlayContext& ctx, bool touchable) {
-    if (!ctx.tx_setflags || !ctx.tx_apply || !ctx.tx_buf || !ctx.sc_sp_ptr) return;
-    typedef void*   (*fn_SF)(void* tx, void* sc, uint32_t flags, uint32_t mask);
+    if (!ctx.tx_apply || !ctx.tx_buf || !ctx.sc_sp_ptr) return;
     typedef int32_t (*fn_AP)(void* tx, bool sync, bool oneWay);
-    auto sf = (fn_SF)ctx.tx_setflags;
     auto ap = (fn_AP)ctx.tx_apply;
-    // NOT_TOUCHABLE=0x10, NOT_FOCUSABLE=0x08; mask covers both bits
-    uint32_t flags = touchable ? 0x00u : 0x18u;
-    sf(ctx.tx_buf, ctx.sc_sp_ptr, flags, 0x18u);
+
+    if (ctx.tx_dropinput) {
+        // DropInputMode::NONE=0 (touchable), ALL=1 (passthrough)
+        typedef void* (*fn_DI)(void* tx, void* sc, int32_t mode);
+        auto di = (fn_DI)ctx.tx_dropinput;
+        di(ctx.tx_buf, ctx.sc_sp_ptr, touchable ? 0 : 1);
+    } else if (ctx.tx_setflags) {
+        typedef void* (*fn_SF)(void* tx, void* sc, uint32_t flags, uint32_t mask);
+        auto sf = (fn_SF)ctx.tx_setflags;
+        uint32_t flags = touchable ? 0x00u : 0x18u;
+        sf(ctx.tx_buf, ctx.sc_sp_ptr, flags, 0x18u);
+    }
     ap(ctx.tx_buf, false, false);
 }
 
