@@ -69,6 +69,16 @@ static bool driver_loaded() {
 }
 
 
+static Camera read_camera(const FFState& st) {
+    Camera cam{};
+    cam.screen_w = FF::SCREEN_W;
+    cam.screen_h = FF::SCREEN_H;
+    // TODO: fill from game memory once offsets known
+    cam.proj[0]=1; cam.proj[5]=1; cam.proj[10]=1; cam.proj[15]=1;
+    cam.view[0]=1; cam.view[5]=1; cam.view[10]=1; cam.view[15]=1;
+    return cam;
+}
+
 int main() {
     LOGI("starting");
 
