@@ -44,6 +44,8 @@ target_link_libraries(ffkernel
     dl
     z
     m
+    # SurfaceComposerClient via runtime dlopen — no link-time dependency needed
+    # (libgui/libbinder loaded at runtime)
 )
 
 # Strip + optimize for size
