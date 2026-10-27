@@ -472,12 +472,29 @@ bool overlay_init_egl(OverlayContext& ctx) {
 
 // NDK only forward-declares ANativeWindow. Use the stable internal layout
 // (unchanged since Android 2.x) to access the query function pointer.
+//
+// Actual layout (AArch64, 8-byte ptr):
+//   android_native_base_t common  — 56 bytes:
+//     int magic (4) + int version (4) + void* reserved[4] (32) + incRef/decRef (16)
+//   uint32_t flags (4) + int min/maxSwapInterval (8) + float xdpi/ydpi (8) + pad (4)
+//   intptr_t oem[4] (32)
+//   fn ptrs: setSwapInterval, dequeueBuffer_DEP, lockBuffer_DEP, queueBuffer_DEP, query
 struct ANW_Internal {
+    // android_native_base_t common (56 bytes on AArch64)
+    int      magic;
+    int      version;
+    void*    reserved[4];   // 32 bytes
+    void   (*incRef)(void*);
+    void   (*decRef)(void*);
+    // ANativeWindow fields
     uint32_t flags;
     int      minSwapInterval;
     int      maxSwapInterval;
-    float    xdpi, ydpi;
+    float    xdpi;
+    float    ydpi;
+    int      _pad;          // align oem[] to 8-byte boundary
     intptr_t oem[4];
+    // function pointers
     int (*setSwapInterval)(void*, int);
     int (*dequeueBuffer_DEPRECATED)(void*, void**);
     int (*lockBuffer_DEPRECATED)(void*, void*);
