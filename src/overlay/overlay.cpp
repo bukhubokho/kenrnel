@@ -109,14 +109,19 @@ static void get_screen_size(int& w, int& h) {
 
 bool overlay_create(OverlayContext& ctx) {
     get_screen_size(ctx.width, ctx.height);
-    LOGI("screen %dx%d", ctx.width, ctx.height);
+    fprintf(stderr, "[OVL] screen %dx%d\n", ctx.width, ctx.height);
 
-    if (!init_binder()) return false;
+    if (!init_binder()) { fprintf(stderr, "[OVL] ERR: binder init failed\n"); return false; }
+    fprintf(stderr, "[OVL] binder OK\n");
 
     dlopen("libui.so",   RTLD_NOW | RTLD_GLOBAL);
     dlopen("libutils.so",RTLD_NOW | RTLD_GLOBAL);
     g_libgui = dlopen("libgui.so", RTLD_NOW | RTLD_GLOBAL);
-    if (!g_libgui) { LOGE("libgui.so: %s", dlerror()); return false; }
+    if (!g_libgui) {
+        fprintf(stderr, "[OVL] ERR: libgui.so: %s\n", dlerror());
+        return false;
+    }
+    fprintf(stderr, "[OVL] libgui.so OK\n");
 
     // ── SurfaceComposerClient ctor ─────────────────────────────────────
     const char* scc_ctor_s[] = {
@@ -124,10 +129,10 @@ bool overlay_create(OverlayContext& ctx) {
         "_ZN7android21SurfaceComposerClientC2Ev",
     };
     auto scc_ctor = (fn_TX_ctor)try_sym(g_libgui, scc_ctor_s, 2, "SCC::ctor");
-    if (!scc_ctor) return false;
+    if (!scc_ctor) { fprintf(stderr, "[OVL] ERR: SCC::ctor not found\n"); return false; }
     void* scc = calloc(1, 512);
     scc_ctor(scc);
-    LOGI("SurfaceComposerClient @ %p", scc);
+    fprintf(stderr, "[OVL] SCC created @ %p\n", scc);
 
     // ── String8 ─────────────────────────────────────────────────────────
     void* libutils = dlopen("libutils.so", RTLD_NOLOAD);
@@ -137,10 +142,9 @@ bool overlay_create(OverlayContext& ctx) {
     };
     auto s8_ctor = (fn_S8_ctor)(try_sym(g_libgui,    s8_ctor_s, 2, "String8::ctor") ?:
                                 try_sym(libutils,     s8_ctor_s, 2, "String8::ctor(utils)"));
-    // String8 internal layout on Android 12: mString is at offset 0 (char*)
-    // Passing a zeroed 64-byte buffer + ctor should be fine
     char name_buf[64] = {};
     if (s8_ctor) s8_ctor(name_buf, "KernelOverlay");
+    fprintf(stderr, "[OVL] String8 %s\n", s8_ctor ? "OK" : "SKIP(raw)");
 
     // ── createSurfaceChecked (confirmed on device) ───────────────────────
     const char* create_s[] = {
@@ -150,7 +154,8 @@ bool overlay_create(OverlayContext& ctx) {
         "_ZN7android21SurfaceComposerClient20createSurfaceCheckedERKNS_7String8EjjiPNS_2spINS_14SurfaceControlEEEiRKNS4_INS_7IBinderEEENS_13LayerMetadataEPj",
     };
     auto create_fn = (fn_createChecked)try_sym(g_libgui, create_s, 2, "createSurfaceChecked");
-    if (!create_fn) return false;
+    if (!create_fn) { fprintf(stderr, "[OVL] ERR: createSurfaceChecked not found\n"); return false; }
+    fprintf(stderr, "[OVL] createSurfaceChecked found\n");
 
     // sp<SurfaceControl> result — just 8 bytes (single pointer)
     sp_t sc_sp = {nullptr};
@@ -160,6 +165,7 @@ bool overlay_create(OverlayContext& ctx) {
     char meta_buf[256] = {};
     uint32_t outHint = 0;
 
+    fprintf(stderr, "[OVL] calling createSurfaceChecked...\n");
     // PixelFormat RGBA_8888 = 1
     int32_t status = create_fn(
         scc,
@@ -173,9 +179,9 @@ bool overlay_create(OverlayContext& ctx) {
         meta_buf,       // LayerMetadata (passed as indirect ptr on stack)
         &outHint
     );
-    LOGI("createSurfaceChecked status=%d sc=%p", status, sc_sp.ptr);
+    fprintf(stderr, "[OVL] createSurfaceChecked status=%d sc=%p\n", status, sc_sp.ptr);
     if (status != 0 || !sc_sp.ptr) {
-        LOGE("createSurfaceChecked failed status=%d", status);
+        fprintf(stderr, "[OVL] ERR: createSurfaceChecked failed status=%d\n", status);
         return false;
     }
     void* sc = sc_sp.ptr;
@@ -210,7 +216,8 @@ bool overlay_create(OverlayContext& ctx) {
     if (tx_setlayer) tx_setlayer(tx_buf, sc, 0x7fffffff);
     if (tx_show)     tx_show    (tx_buf, sc);
     if (tx_apply)    tx_apply   (tx_buf, false);
-    LOGI("Transaction applied, layer=INT_MAX");
+    fprintf(stderr, "[OVL] Transaction applied (ctor=%p setLayer=%p show=%p apply=%p)\n",
+            (void*)tx_ctor, (void*)tx_setlayer, (void*)tx_show, (void*)tx_apply);
 
     // ── getSurface() → ANativeWindow ────────────────────────────────────
     // getSurface returns sp<Surface> via x8 (indirect result register on ARM64)
@@ -223,29 +230,28 @@ bool overlay_create(OverlayContext& ctx) {
 
     sp_t surf_sp = {nullptr};
     if (get_surf_fn) {
-        // ARM64 ABI: getSurface() returns sp<Surface> via x8 (indirect result register)
-        // We pass &surf_sp as the x8 register (indirect result location)
-        // GCC/Clang handle this when we call via a typedef that returns a struct:
-        //   typedef sp_t (*fn_getSurf_ret)(void* sc);
         typedef sp_t (*fn_getSurf_ret_t)(void*);
         auto gsr = (fn_getSurf_ret_t)(void*)get_surf_fn;
         surf_sp = gsr(sc);
+        fprintf(stderr, "[OVL] getSurface ptr=%p\n", surf_sp.ptr);
+    } else {
+        fprintf(stderr, "[OVL] getSurface: fn not found, scanning SC\n");
     }
 
     if (surf_sp.ptr) {
-        // Check ANativeWindow magic
         uint32_t magic = *(uint32_t*)surf_sp.ptr;
-        LOGI("getSurface ptr=%p magic=0x%08x", surf_sp.ptr, magic);
+        fprintf(stderr, "[OVL] getSurface magic=0x%08x\n", magic);
         if (magic == 0x00574e41 || magic == 0xDEF10001) {
             ctx.window = (ANativeWindow*)surf_sp.ptr;
             ANativeWindow_acquire(ctx.window);
-            LOGI("ANativeWindow OK via getSurface");
+            fprintf(stderr, "[OVL] ANativeWindow OK via getSurface\n");
             return true;
         }
+        fprintf(stderr, "[OVL] bad magic, scanning SC fields\n");
     }
 
     // ── Fallback: scan SurfaceControl fields for ANativeWindow ──────────
-    LOGI("getSurface fallback: scanning SurfaceControl @ %p", sc);
+    fprintf(stderr, "[OVL] scanning SurfaceControl @ %p\n", sc);
     uint64_t* sc_fields = (uint64_t*)sc;
     for (int off = 0; off < 32; off++) {
         void* candidate = (void*)sc_fields[off];
@@ -254,12 +260,12 @@ bool overlay_create(OverlayContext& ctx) {
         if (magic == 0x00574e41) {
             ctx.window = (ANativeWindow*)candidate;
             ANativeWindow_acquire(ctx.window);
-            LOGI("ANativeWindow found at SC[%d]=%p", off, ctx.window);
+            fprintf(stderr, "[OVL] ANativeWindow found at SC[%d]=%p\n", off, ctx.window);
             return true;
         }
     }
 
-    LOGE("could not find ANativeWindow");
+    fprintf(stderr, "[OVL] ERR: could not find ANativeWindow\n");
     return false;
 }
 
