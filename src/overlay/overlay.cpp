@@ -298,16 +298,16 @@ bool overlay_create(OverlayContext& ctx) {
         "_ZN7android21SurfaceComposerClient11Transaction8setFlagsEPNS_14SurfaceControlEjj",
         "_ZN7android21SurfaceComposerClient11Transaction8setFlagsEPKNS_14SurfaceControlEjj",
     };
-    // setDropInputMode: drops all input events — Android 13+ only
+    // setDropInputMode: confirmed from device strings — gui::DropInputMode (not WindowInfo::)
     const char* tx_dropinput_s[] = {
-        "_ZN7android21SurfaceComposerClient11Transaction16setDropInputModeERKNS_2spINS_14SurfaceControlEEENS_3gui10WindowInfo13DropInputModeE",
-        "_ZN7android21SurfaceComposerClient11Transaction16setDropInputModeEPNS_14SurfaceControlENS_3gui10WindowInfo13DropInputModeE",
+        "_ZN7android21SurfaceComposerClient11Transaction16setDropInputModeERKNS_2spINS_14SurfaceControlEEENS_3gui13DropInputModeE",
+        "_ZN7android21SurfaceComposerClient11Transaction16setDropInputModeEPNS_14SurfaceControlENS_3gui13DropInputModeE",
     };
-    // setTrustedOverlay: Android 12 — trusted overlays don't block input to layers below
+    // setTrustedOverlay: confirmed from device strings — 17 chars (not 18)
     const char* tx_trusted_s[] = {
-        "_ZN7android21SurfaceComposerClient11Transaction18setTrustedOverlayERKNS_2spINS_14SurfaceControlEEEb",
-        "_ZN7android21SurfaceComposerClient11Transaction18setTrustedOverlayEPNS_14SurfaceControlEb",
-        "_ZN7android21SurfaceComposerClient11Transaction18setTrustedOverlayEPKNS_14SurfaceControlEb",
+        "_ZN7android21SurfaceComposerClient11Transaction17setTrustedOverlayERKNS_2spINS_14SurfaceControlEEEb",
+        "_ZN7android21SurfaceComposerClient11Transaction17setTrustedOverlayERKNS_2spINS_14SurfaceControlEEENS_3gui14TrustedOverlayE",
+        "_ZN7android21SurfaceComposerClient11Transaction17setTrustedOverlayEPNS_14SurfaceControlEb",
     };
 
     auto tx_ctor      = (fn_TX_ctor         )try_sym(g_libgui, tx_ctor_s,      2, "TX::ctor");
