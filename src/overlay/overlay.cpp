@@ -340,13 +340,24 @@ bool overlay_create(OverlayContext& ctx) {
     }
 
     if (surf_sp.ptr) {
-        uint32_t magic = *(uint32_t*)surf_sp.ptr;
-        // ANativeWindow magic = 0x5F776E64 ('_wnd'), but skip check — trust getSurface()
-        fprintf(stderr, "[OVL] getSurface ptr=%p magic=0x%08x (ANW=0x5F776E64)\n",
-                surf_sp.ptr, magic);
+        uint32_t magic0 = *(uint32_t*)surf_sp.ptr;
+        fprintf(stderr, "[OVL] getSurface ptr=%p magic[0]=0x%08x\n", surf_sp.ptr, magic0);
+        // Surface may have RefBase vtable before ANativeWindow — scan for magic 0x5F776E64
+        uint8_t* surf_bytes = (uint8_t*)surf_sp.ptr;
+        for (int off = 0; off < 512; off += 8) {
+            uint64_t val = 0;
+            if (!safe_read8(surf_bytes + off, &val)) break;
+            if ((uint32_t)val == 0x5F776E64u) {
+                ANativeWindow* anw = (ANativeWindow*)(surf_bytes + off);
+                ctx.window = anw;
+                fprintf(stderr, "[OVL] ANativeWindow magic at surf+%d, ptr=%p\n", off, anw);
+                // Don't call ANativeWindow_acquire — EGL handles ref
+                return true;
+            }
+        }
+        fprintf(stderr, "[OVL] WARN: magic not found in Surface, trying ptr directly\n");
+        // Last resort: trust EGL to validate
         ctx.window = (ANativeWindow*)surf_sp.ptr;
-        ANativeWindow_acquire(ctx.window);
-        fprintf(stderr, "[OVL] ANativeWindow via getSurface — trying EGL\n");
         return true;
     }
 
