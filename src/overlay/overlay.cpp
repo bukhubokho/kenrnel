@@ -470,12 +470,51 @@ bool overlay_init_egl(OverlayContext& ctx) {
     return true;
 }
 
+static int overlay_read_rotation() {
+    const char* paths[] = {
+        "/sys/class/graphics/fb0/rotate",
+        "/sys/devices/virtual/graphics/fb0/rotate",
+        nullptr
+    };
+    for (int i = 0; paths[i]; i++) {
+        FILE* f = fopen(paths[i], "r");
+        if (!f) continue;
+        int r = 0; fscanf(f, "%d", &r); fclose(f);
+        return r & 3;
+    }
+    return -1;
+}
+
 void overlay_query_size(OverlayContext& ctx) {
-    if (ctx.display == EGL_NO_DISPLAY || ctx.surface == EGL_NO_SURFACE) return;
-    EGLint w = 0, h = 0;
-    eglQuerySurface(ctx.display, ctx.surface, EGL_WIDTH,  &w);
-    eglQuerySurface(ctx.display, ctx.surface, EGL_HEIGHT, &h);
-    if (w > 0 && h > 0) { ctx.width = w; ctx.height = h; }
+    if (!ctx.window) return;
+
+    // Store natural dims on first call
+    if (ctx.nat_w == 0) { ctx.nat_w = ctx.width; ctx.nat_h = ctx.height; }
+
+    int rot = overlay_read_rotation();
+    if (rot < 0) rot = ctx.cur_rot;  // sysfs not available — keep last known
+
+    if (rot != ctx.cur_rot) {
+        ctx.cur_rot = rot;
+        // Resize ANativeWindow buffer to match display orientation
+        int new_w = (rot == 1 || rot == 3) ? ctx.nat_h : ctx.nat_w;
+        int new_h = (rot == 1 || rot == 3) ? ctx.nat_w : ctx.nat_h;
+        // WINDOW_FORMAT_RGBA_8888 = 1
+        ANativeWindow_setBuffersGeometry(ctx.window, new_w, new_h, 1);
+        ctx.width  = new_w;
+        ctx.height = new_h;
+        fprintf(stderr, "[OVL] rotation=%d → buffer %dx%d\n", rot, new_w, new_h);
+    }
+
+    // Verify from EGL (reflects buffer size after next swapBuffers)
+    if (ctx.display != EGL_NO_DISPLAY && ctx.surface != EGL_NO_SURFACE) {
+        EGLint w = 0, h = 0;
+        eglQuerySurface(ctx.display, ctx.surface, EGL_WIDTH,  &w);
+        eglQuerySurface(ctx.display, ctx.surface, EGL_HEIGHT, &h);
+        if (w > 0 && h > 0 && (w != ctx.width || h != ctx.height)) {
+            ctx.width = w; ctx.height = h;
+        }
+    }
 }
 
 void overlay_begin_frame(const OverlayContext& ctx) {

@@ -11,6 +11,9 @@ struct OverlayContext {
     EGLContext      context     = EGL_NO_CONTEXT;
     int             width       = 0;
     int             height      = 0;
+    int             nat_w       = 0;   // natural (portrait) width — set once
+    int             nat_h       = 0;   // natural (portrait) height — set once
+    int             cur_rot     = 0;   // last known rotation (0/1/2/3)
     bool            ready       = false;
     // Internal — kept for realtime flag toggling
     void*           sc_sp_ptr    = nullptr;

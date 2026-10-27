@@ -155,10 +155,11 @@ int main() {
             menu.visible = !menu.visible;
         }
 
-        // Update overlay size from EGL (handles screen rotation)
+        // Update overlay size + handle rotation (resizes ANativeWindow buffer)
         overlay_query_size(overlay);
         input.screen_w.store(overlay.width);
         input.screen_h.store(overlay.height);
+        input.rotation.store(overlay.cur_rot);
         io.DisplaySize = {(float)overlay.width, (float)overlay.height};
 
         // Try to find FF in background — don't block rendering

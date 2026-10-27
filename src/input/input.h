@@ -68,29 +68,9 @@ struct DevTouch {
     bool  is_touch_dev{false};
 };
 
-static int read_rotation_sysfs() {
-    // Try common sysfs paths for screen rotation (0/1/2/3)
-    const char* paths[] = {
-        "/sys/class/graphics/fb0/rotate",
-        "/sys/devices/virtual/graphics/fb0/rotate",
-        "/sys/class/drm/card0-DSI-1/panel_orientation",
-        nullptr
-    };
-    for (int i = 0; paths[i]; i++) {
-        FILE* f = fopen(paths[i], "r");
-        if (!f) continue;
-        int rot = 0;
-        fscanf(f, "%d", &rot);
-        fclose(f);
-        return rot & 3;
-    }
-    return -1;  // unknown
-}
-
 static void input_reader_thread(InputState* st) {
     auto devs = find_input_devices();
     std::vector<DevTouch> touch_devs;
-    int poll_count = 0;
 
     auto now_ms = []() -> int64_t {
         return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -115,18 +95,7 @@ static void input_reader_thread(InputState* st) {
     fprintf(stderr, "[INPUT] opened %zu devices\n", touch_devs.size());
 
     while (st->running.load()) {
-        // Poll rotation every ~250ms (every 30 iterations × 8ms)
-        if (++poll_count >= 30) {
-            poll_count = 0;
-            int r = read_rotation_sysfs();
-            if (r >= 0) st->rotation.store(r);
-            // Fallback: infer from screen dims
-            else {
-                int sw = st->screen_w.load(), sh = st->screen_h.load();
-                if (sw > 0 && sh > 0)
-                    st->rotation.store(sw > sh ? 1 : 0);
-            }
-        }
+        // rotation is updated by main loop from overlay_query_size — no polling needed here
 
         for (auto& dt : touch_devs) {
             struct input_event ev;
