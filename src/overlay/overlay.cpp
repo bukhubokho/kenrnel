@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <sys/stat.h>
+#include <sys/uio.h>
 #include <unistd.h>
 
 #define LOG_TAG "FFKRN"
@@ -91,7 +92,14 @@ typedef void (*fn_getSurf)(void* ret_sp, void* sc);
 typedef void    (*fn_TX_ctor    )(void* tx);
 typedef void*   (*fn_TX_setLayer)(void* tx, void* sc, int32_t z);
 typedef void*   (*fn_TX_show   )(void* tx, void* sc);
-typedef int32_t (*fn_TX_apply  )(void* tx, bool sync);
+typedef int32_t (*fn_TX_apply  )(void* tx, bool sync, bool oneWay);
+
+// Safe self-read — avoids SIGSEGV on unmapped addresses
+static bool safe_read8(void* addr, uint64_t* out) {
+    struct iovec lv = { out,  8 };
+    struct iovec rv = { addr, 8 };
+    return process_vm_readv(getpid(), &lv, 1, &rv, 1, 0) == 8;
+}
 
 // ProcessState
 typedef void* (*fn_PS_self )();
@@ -279,14 +287,15 @@ bool overlay_create(OverlayContext& ctx) {
         "_ZN7android21SurfaceComposerClient11Transaction4showERKNS_2spINS_14SurfaceControlEEE",
     };
     const char* tx_apply_s[] = {
-        "_ZN7android21SurfaceComposerClient11Transaction5applyEb",
-        "_ZN7android21SurfaceComposerClient11Transaction5applyEv",
+        "_ZN7android21SurfaceComposerClient11Transaction5applyEbb", // Android 12+ (sync, oneWay)
+        "_ZN7android21SurfaceComposerClient11Transaction5applyEb",  // Android 11
+        "_ZN7android21SurfaceComposerClient11Transaction5applyEv",  // older
     };
 
     auto tx_ctor     = (fn_TX_ctor    )try_sym(g_libgui, tx_ctor_s,     2, "TX::ctor");
     auto tx_setlayer = (fn_TX_setLayer)try_sym(g_libgui, tx_setlayer_s, 3, "TX::setLayer");
     auto tx_show     = (fn_TX_show    )try_sym(g_libgui, tx_show_s,     3, "TX::show");
-    auto tx_apply    = (fn_TX_apply   )try_sym(g_libgui, tx_apply_s,    2, "TX::apply");
+    auto tx_apply    = (fn_TX_apply   )try_sym(g_libgui, tx_apply_s,    3, "TX::apply");
 
     // Heap-allocate Transaction (can be >2KB in Android 12 with vectors)
     void* tx_buf = calloc(1, 4096);
@@ -306,7 +315,7 @@ bool overlay_create(OverlayContext& ctx) {
     fprintf(stderr, "[OVL] setLayer OK\n");
     if (tx_show)     tx_show    (tx_buf, sc_arg);
     fprintf(stderr, "[OVL] show OK\n");
-    if (tx_apply)    tx_apply   (tx_buf, false);
+    if (tx_apply)    tx_apply   (tx_buf, false, false);
     fprintf(stderr, "[OVL] Transaction applied\n");
     free(tx_buf);
 
@@ -314,10 +323,11 @@ bool overlay_create(OverlayContext& ctx) {
     // getSurface returns sp<Surface> via x8 (indirect result register on ARM64)
     // Surface inherits ANativeWindow — ANW magic = 0x00574e41 at offset 0
     const char* getsurf_s[] = {
-        "_ZNK7android14SurfaceControl9getSurfaceEv",
-        "_ZN7android14SurfaceControl9getSurfaceEv",
+        "_ZNK7android14SurfaceControl9getSurfaceEv",      // const, Android 12
+        "_ZN7android14SurfaceControl9getSurfaceEv",       // non-const
+        "_ZNK7android14SurfaceControl17getDefaultBufferEv", // alternative name
     };
-    auto get_surf_fn = (fn_getSurf)try_sym(g_libgui, getsurf_s, 2, "SC::getSurface");
+    auto get_surf_fn = (fn_getSurf)try_sym(g_libgui, getsurf_s, 3, "SC::getSurface");
 
     sp_t surf_sp = {nullptr};
     if (get_surf_fn) {
@@ -341,12 +351,17 @@ bool overlay_create(OverlayContext& ctx) {
     }
 
     // ── Fallback: scan SurfaceControl fields for ANativeWindow ──────────
+    // Use safe_read8 (process_vm_readv on self) to avoid SIGSEGV on unmapped ptrs
     fprintf(stderr, "[OVL] scanning SurfaceControl @ %p\n", sc);
-    uint64_t* sc_fields = (uint64_t*)sc;
-    for (int off = 0; off < 32; off++) {
-        void* candidate = (void*)sc_fields[off];
+    for (int off = 0; off < 64; off++) {
+        uint64_t field = 0;
+        void* field_addr = (uint8_t*)sc + off * 8;
+        if (!safe_read8(field_addr, &field)) continue;
+        void* candidate = (void*)field;
         if (!candidate || ((uintptr_t)candidate & 0xfff)) continue;
-        uint32_t magic = *(uint32_t*)candidate;
+        uint64_t magic64 = 0;
+        if (!safe_read8(candidate, &magic64)) continue;
+        uint32_t magic = (uint32_t)magic64;
         if (magic == 0x00574e41) {
             ctx.window = (ANativeWindow*)candidate;
             ANativeWindow_acquire(ctx.window);
