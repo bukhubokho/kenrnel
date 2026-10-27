@@ -8,32 +8,67 @@
 #include <cerrno>
 #include <sys/stat.h>
 
-// Driver device name uses BY prefix (from get_random_bytes + "BY" author sig)
-static const char* RT_PREFIX = "BY";
+// Probe a single fd: send IOCTL_SET_PID with pid=0 and see if driver responds
+// RTkernel returns 0 or -ESRCH (no such process) — anything but ENOTTY/ENOIOCTLCMD
+static bool probe_fd(int fd) {
+    rt_pid_args args{};
+    args.pid = 0;
+    char name[] = "";
+    args.name_ptr = (uint64_t)(uintptr_t)name;
+    int r = ioctl(fd, IOCTL_SET_PID, &args);
+    int e = errno;
+    // ENOTTY / EINVAL on wrong device; driver returns 0 or ESRCH/EINVAL but not ENOTTY
+    if (r == 0) return true;
+    if (e == ENOTTY) return false;   // not our driver
+    if (e == ENXIO)  return false;
+    // ESRCH, EFAULT, EINVAL — driver handled the ioctl (pid 0 = no process found)
+    return true;
+}
 
 int rt_open() {
-    // Scan /dev/ for BY* device
     DIR* d = opendir("/dev");
     if (!d) return -1;
 
-    char path[64];
+    char path[128];
     struct dirent* ent;
-    int fd = -1;
+    int found = -1;
 
-    while ((ent = readdir(d))) {
-        if (strncmp(ent->d_name, RT_PREFIX, 2) == 0 && strlen(ent->d_name) > 2) {
-            snprintf(path, sizeof(path), "/dev/%s", ent->d_name);
-            fd = open(path, O_RDWR);
-            if (fd >= 0) break;
+    while ((ent = readdir(d)) && found < 0) {
+        // skip . and ..
+        if (ent->d_name[0] == '.') continue;
+        // only check char devices (DT_CHR) or unknown type (DT_UNKNOWN)
+        if (ent->d_type != DT_CHR && ent->d_type != DT_UNKNOWN) continue;
+        // skip well-known system devices to avoid side effects
+        const char* skip[] = {
+            "null","zero","full","random","urandom","kmsg","ptmx","tty",
+            "mem","kmem","port","console","binder","hwbinder","vndbinder",
+            "ashmem","ion","fuse","input","snd","video","block",nullptr
+        };
+        bool skip_it = false;
+        for (int i = 0; skip[i]; i++) {
+            if (strncmp(ent->d_name, skip[i], strlen(skip[i])) == 0) {
+                skip_it = true; break;
+            }
+        }
+        if (skip_it) continue;
+
+        snprintf(path, sizeof(path), "/dev/%s", ent->d_name);
+        int fd = open(path, O_RDWR | O_NONBLOCK);
+        if (fd < 0) continue;
+
+        struct stat st{};
+        fstat(fd, &st);
+        if (!S_ISCHR(st.st_mode)) { close(fd); continue; }
+
+        if (probe_fd(fd)) {
+            fprintf(stderr, "[DRV] found RTkernel device: %s\n", path);
+            found = fd;
+        } else {
+            close(fd);
         }
     }
     closedir(d);
-
-    if (fd < 0) {
-        // Fallback: check known name if already open
-        fd = open("/dev/BYBGBB", O_RDWR);
-    }
-    return fd;
+    return found;
 }
 
 void rt_close(int fd) {

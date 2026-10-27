@@ -54,18 +54,10 @@ static bool validate_key(const std::string& key) {
     return true;
 }
 
-// Check if RTkernel driver is loaded (BY* device exists)
+// Check if RTkernel driver is loaded by attempting rt_open()
 static bool driver_loaded() {
-    DIR* d = opendir("/dev");
-    if (!d) return false;
-    struct dirent* ent;
-    while ((ent = readdir(d))) {
-        if (strncmp(ent->d_name, "BY", 2) == 0 && strlen(ent->d_name) > 2) {
-            closedir(d);
-            return true;
-        }
-    }
-    closedir(d);
+    int fd = rt_open();
+    if (fd >= 0) { close(fd); return true; }
     return false;
 }
 
