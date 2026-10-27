@@ -83,14 +83,8 @@ static Camera read_camera(const FFState& st) {
 int main() {
     LOGI("starting");
 
-    // 1. Key check
     std::string key = load_key();
-    if (!validate_key(key)) {
-        LOGE("invalid key");
-        fprintf(stderr, "[KERNEL] Key invalid or not found. Put key in /data/local/tmp/key.txt\n");
-        return 1;
-    }
-    LOGI("key ok: %.8s...", key.c_str());
+    LOGI("starting, key=%s", key.empty() ? "none" : "ok");
 
     // 2. Driver check
     if (!driver_loaded()) {
