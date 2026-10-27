@@ -331,7 +331,15 @@ bool overlay_create(OverlayContext& ctx) {
     }
     if (tx_apply)    tx_apply   (tx_buf, false, false);
     fprintf(stderr, "[OVL] Transaction applied\n");
-    free(tx_buf);
+    // Keep tx_buf, tx_setflags, tx_apply, sc_sp for realtime flag toggling
+    // sc_sp is on stack — copy to heap so it outlives this function
+    sp_t* sc_sp_heap = new sp_t;
+    *sc_sp_heap = sc_sp;
+    ctx.sc_sp_ptr   = sc_sp_heap;
+    ctx.tx_setflags = (void*)tx_setflags;
+    ctx.tx_apply    = (void*)tx_apply;
+    ctx.tx_buf      = tx_buf;
+    // Note: tx_buf is NOT freed here — kept for overlay_set_touchable()
 
     // ── getSurface() → ANativeWindow ────────────────────────────────────
     // getSurface returns sp<Surface> via x8 (indirect result register on ARM64)
@@ -445,6 +453,18 @@ void overlay_end_frame(const OverlayContext& ctx) {
     eglSwapBuffers(ctx.display, ctx.surface);
 }
 
+void overlay_set_touchable(OverlayContext& ctx, bool touchable) {
+    if (!ctx.tx_setflags || !ctx.tx_apply || !ctx.tx_buf || !ctx.sc_sp_ptr) return;
+    typedef void*   (*fn_SF)(void* tx, void* sc, uint32_t flags, uint32_t mask);
+    typedef int32_t (*fn_AP)(void* tx, bool sync, bool oneWay);
+    auto sf = (fn_SF)ctx.tx_setflags;
+    auto ap = (fn_AP)ctx.tx_apply;
+    // NOT_TOUCHABLE=0x10, NOT_FOCUSABLE=0x08; mask covers both bits
+    uint32_t flags = touchable ? 0x00u : 0x18u;
+    sf(ctx.tx_buf, ctx.sc_sp_ptr, flags, 0x18u);
+    ap(ctx.tx_buf, false, false);
+}
+
 void overlay_destroy(OverlayContext& ctx) {
     if (ctx.display != EGL_NO_DISPLAY) {
         eglMakeCurrent(ctx.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -453,5 +473,7 @@ void overlay_destroy(OverlayContext& ctx) {
         eglTerminate(ctx.display);
     }
     if (ctx.window) ANativeWindow_release(ctx.window);
+    if (ctx.tx_buf)    { free(ctx.tx_buf);    ctx.tx_buf    = nullptr; }
+    if (ctx.sc_sp_ptr) { delete (sp_t*)ctx.sc_sp_ptr; ctx.sc_sp_ptr = nullptr; }
     ctx.ready = false;
 }

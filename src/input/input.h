@@ -16,10 +16,14 @@
 #define KEY_VOLUMEUP    115
 
 struct InputState {
-    std::atomic<bool> vol_down{false};   // pressed this frame
-    std::atomic<bool> vol_up{false};
-    std::atomic<bool> running{true};
-    std::thread       reader;
+    std::atomic<bool>     vol_down{false};   // single press pending
+    std::atomic<bool>     vol_up{false};
+    std::atomic<bool>     double_press{false}; // double-press (either button) detected
+    std::atomic<bool>     running{true};
+    std::thread           reader;
+    // double-press tracking (written only from reader thread)
+    int64_t               last_vol_ms{0};
+    static constexpr int  DOUBLE_MS = 400;
 };
 
 // Find all /dev/input/eventX devices
@@ -47,13 +51,28 @@ static void input_reader_thread(InputState* st) {
     }
     fprintf(stderr, "[INPUT] opened %zu input devices\n", fds.size());
 
+    auto now_ms = []() -> int64_t {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+    };
+
     while (st->running.load()) {
         for (int fd : fds) {
             struct input_event ev;
             while (read(fd, &ev, sizeof(ev)) == sizeof(ev)) {
                 if (ev.type == EV_KEY && ev.value == 1) {  // key down
-                    if (ev.code == KEY_VOLUMEDOWN) st->vol_down.store(true);
-                    if (ev.code == KEY_VOLUMEUP)   st->vol_up.store(true);
+                    bool is_vol = (ev.code == KEY_VOLUMEDOWN || ev.code == KEY_VOLUMEUP);
+                    if (is_vol) {
+                        int64_t now = now_ms();
+                        int64_t diff = now - st->last_vol_ms;
+                        if (diff > 0 && diff < st->DOUBLE_MS) {
+                            // second press within window — double press
+                            st->double_press.store(true);
+                            st->last_vol_ms = 0;  // reset so triple doesn't trigger again
+                        } else {
+                            st->last_vol_ms = now;
+                        }
+                    }
                 }
             }
         }
@@ -72,12 +91,7 @@ static void input_destroy(InputState& st) {
     if (st.reader.joinable()) st.reader.join();
 }
 
-// Call once per frame — returns true if button was pressed, clears the flag
-static bool input_consume_voldown(InputState& st) {
-    bool v = st.vol_down.exchange(false);
-    return v;
-}
-static bool input_consume_volup(InputState& st) {
-    bool v = st.vol_up.exchange(false);
-    return v;
+// Returns true if a double-press (either vol button) happened this frame
+static bool input_consume_double_press(InputState& st) {
+    return st.double_press.exchange(false);
 }

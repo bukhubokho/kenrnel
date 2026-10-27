@@ -149,15 +149,12 @@ int main() {
     LOGI("main loop start %dx%d", overlay.width, overlay.height);
 
     while (keep_running) {
-        // Vol-down: toggle menu visibility
-        if (input_consume_voldown(input)) {
+        // Double-press either volume button → toggle menu on/off
+        if (input_consume_double_press(input)) {
             menu.visible = !menu.visible;
-        }
-        // Vol-up when menu visible: simulate ImGui "click" (move cursor to focused item)
-        if (menu.visible && input_consume_volup(input)) {
-            ImGuiIO& io = ImGui::GetIO();
-            io.AddMouseButtonEvent(0, true);
-            io.AddMouseButtonEvent(0, false);
+            // When menu visible: allow touch so user can click items
+            // When menu hidden: NOT_TOUCHABLE so game gets all input
+            overlay_set_touchable(overlay, menu.visible);
         }
 
         // Try to find FF in background — don't block rendering
