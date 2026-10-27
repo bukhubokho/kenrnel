@@ -118,18 +118,20 @@ int main() {
     FF::SCREEN_H = overlay.height;
 
     // 5. ImGui setup
+    fprintf(stderr, "[KERNEL] ImGui init...\n");
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    fprintf(stderr, "[KERNEL] ImGui context OK\n");
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = {(float)overlay.width, (float)overlay.height};
     io.IniFilename = nullptr;
-
-    // Load a nice font — embedded Inter/Roboto would go here
-    // For now use default at 16px, scale up for phone DPI
     io.FontGlobalScale = (float)overlay.height / 1080.f * 1.5f;
 
-    ImGui_ImplAndroid_Init(nullptr);
+    fprintf(stderr, "[KERNEL] ImGui_ImplAndroid_Init...\n");
+    ImGui_ImplAndroid_Init(overlay.window);
+    fprintf(stderr, "[KERNEL] ImGui_ImplOpenGL3_Init...\n");
     ImGui_ImplOpenGL3_Init("#version 100");
+    fprintf(stderr, "[KERNEL] ImGui backends OK\n");
 
     MenuState    menu{};
     ESPConfig    esp_cfg{};
@@ -137,6 +139,7 @@ int main() {
 
     menu.visible = true;  // show immediately on launch
 
+    fprintf(stderr, "[KERNEL] main loop start %dx%d\n", overlay.width, overlay.height);
     LOGI("main loop start %dx%d", overlay.width, overlay.height);
 
     while (keep_running) {
