@@ -88,27 +88,32 @@ int main() {
 
     // 2. Driver check
     if (!driver_loaded()) {
-        LOGE("RTkernel driver not loaded — run 5.10.sh first");
-        fprintf(stderr, "[KERNEL] Driver not found. Run 5.10.sh first.\n");
+        fprintf(stderr, "[KERNEL] ERR: Driver /dev/BY* not found. Run 5.10.sh first.\n");
         return 1;
     }
+    fprintf(stderr, "[KERNEL] Driver OK\n");
 
     // 3. Init FF memory
     FFState ff{};
     if (!ff_init(ff)) {
-        LOGE("FF process not found, retrying in background...");
+        fprintf(stderr, "[KERNEL] WARN: FF process not found yet, will retry\n");
+    } else {
+        fprintf(stderr, "[KERNEL] FF pid=%u il2cpp=0x%lx\n", ff.ff_pid, ff.il2cpp);
     }
 
     // 4. Create overlay window + EGL
+    fprintf(stderr, "[KERNEL] Creating overlay...\n");
     OverlayContext overlay{};
     if (!overlay_create(overlay)) {
-        LOGE("overlay_create failed");
+        fprintf(stderr, "[KERNEL] ERR: overlay_create failed\n");
         return 1;
     }
+    fprintf(stderr, "[KERNEL] Overlay window OK %dx%d\n", overlay.width, overlay.height);
     if (!overlay_init_egl(overlay)) {
-        LOGE("EGL init failed");
+        fprintf(stderr, "[KERNEL] ERR: EGL init failed\n");
         return 1;
     }
+    fprintf(stderr, "[KERNEL] EGL OK\n");
 
     FF::SCREEN_W = overlay.width;
     FF::SCREEN_H = overlay.height;
