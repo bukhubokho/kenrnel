@@ -341,14 +341,13 @@ bool overlay_create(OverlayContext& ctx) {
 
     if (surf_sp.ptr) {
         uint32_t magic = *(uint32_t*)surf_sp.ptr;
-        fprintf(stderr, "[OVL] getSurface magic=0x%08x\n", magic);
-        if (magic == 0x00574e41 || magic == 0xDEF10001) {
-            ctx.window = (ANativeWindow*)surf_sp.ptr;
-            ANativeWindow_acquire(ctx.window);
-            fprintf(stderr, "[OVL] ANativeWindow OK via getSurface\n");
-            return true;
-        }
-        fprintf(stderr, "[OVL] bad magic, scanning SC fields\n");
+        // ANativeWindow magic = 0x5F776E64 ('_wnd'), but skip check — trust getSurface()
+        fprintf(stderr, "[OVL] getSurface ptr=%p magic=0x%08x (ANW=0x5F776E64)\n",
+                surf_sp.ptr, magic);
+        ctx.window = (ANativeWindow*)surf_sp.ptr;
+        ANativeWindow_acquire(ctx.window);
+        fprintf(stderr, "[OVL] ANativeWindow via getSurface — trying EGL\n");
+        return true;
     }
 
     // ── Fallback: scan SurfaceControl fields for ANativeWindow ──────────
