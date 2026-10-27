@@ -141,6 +141,9 @@ int main() {
     input_init(input);
     fprintf(stderr, "[KERNEL] Input reader started\n");
 
+    // menu starts visible — enable touch immediately
+    overlay_set_touchable(overlay, true);
+
     fprintf(stderr, "[KERNEL] main loop start %dx%d\n", overlay.width, overlay.height);
     LOGI("main loop start %dx%d", overlay.width, overlay.height);
 
