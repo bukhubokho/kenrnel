@@ -8,7 +8,10 @@
 #include <cstdio>
 #include <sys/stat.h>
 #include <sys/uio.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
 #include <unistd.h>
+#include <linux/fb.h>
 
 #define LOG_TAG "FFKRN"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
@@ -471,16 +474,39 @@ bool overlay_init_egl(OverlayContext& ctx) {
 }
 
 static int overlay_read_rotation() {
-    const char* paths[] = {
-        "/sys/class/graphics/fb0/rotate",
-        "/sys/devices/virtual/graphics/fb0/rotate",
-        nullptr
-    };
-    for (int i = 0; paths[i]; i++) {
-        FILE* f = fopen(paths[i], "r");
-        if (!f) continue;
-        int r = 0; fscanf(f, "%d", &r); fclose(f);
-        return r & 3;
+    // 1. framebuffer ioctl — xres/yres reflect current display orientation
+    {
+        const char* fb_paths[] = {
+            "/dev/graphics/fb0", "/dev/fb0", nullptr
+        };
+        for (int i = 0; fb_paths[i]; i++) {
+            int fd = open(fb_paths[i], O_RDONLY);
+            if (fd < 0) continue;
+            struct fb_var_screeninfo vinfo{};
+            if (ioctl(fd, FBIOGET_VSCREENINFO, &vinfo) == 0) {
+                close(fd);
+                if (vinfo.rotate != 0) return (int)(vinfo.rotate & 3);
+                // rotate field sometimes stays 0 even in landscape —
+                // use xres/yres as fallback (they DO reflect orientation)
+                if (vinfo.xres > vinfo.yres) return 1;  // landscape → 90° CW
+                return 0;
+            }
+            close(fd);
+        }
+    }
+    // 2. sysfs fallback
+    {
+        const char* paths[] = {
+            "/sys/class/graphics/fb0/rotate",
+            "/sys/devices/virtual/graphics/fb0/rotate",
+            nullptr
+        };
+        for (int i = 0; paths[i]; i++) {
+            FILE* f = fopen(paths[i], "r");
+            if (!f) continue;
+            int r = 0; fscanf(f, "%d", &r); fclose(f);
+            return r & 3;
+        }
     }
     return -1;
 }
