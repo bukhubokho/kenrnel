@@ -16,6 +16,32 @@
 // sp<T> on Android is just a single pointer field
 struct sp_t { void* ptr; };
 
+// AArch64: sp<T> has non-trivial destructor → returned via x8 (indirect result register),
+// NOT x0. We need inline asm to call such functions correctly.
+// call_x8_ret0: fn() → result in x8
+static void call_x8_ret0(void* fn, sp_t* out) {
+    asm volatile(
+        "mov x8, %1\n\t"
+        "blr %0\n\t"
+        :
+        : "r"(fn), "r"(out)
+        : "x0","x1","x2","x3","x4","x5","x6","x7","x8",
+          "x9","x10","x11","x12","x13","x14","x15","x16","x17","x30","memory"
+    );
+}
+// call_x8_ret1: fn(x0) → result in x8
+static void call_x8_ret1(void* fn, void* a0, sp_t* out) {
+    asm volatile(
+        "mov x0, %1\n\t"
+        "mov x8, %2\n\t"
+        "blr %0\n\t"
+        :
+        : "r"(fn), "r"(a0), "r"(out)
+        : "x0","x1","x2","x3","x4","x5","x6","x7","x8",
+          "x9","x10","x11","x12","x13","x14","x15","x16","x17","x30","memory"
+    );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIRMED symbol from device grep:
 //  createSurfaceChecked returns status_t (int32_t) — no hidden ABI return ptr
@@ -124,29 +150,48 @@ bool overlay_create(OverlayContext& ctx) {
     }
     fprintf(stderr, "[OVL] libgui.so OK\n");
 
-    // ── SurfaceComposerClient ctor ─────────────────────────────────────
-    const char* scc_ctor_s[] = {
-        "_ZN7android21SurfaceComposerClientC1Ev",
-        "_ZN7android21SurfaceComposerClientC2Ev",
-    };
-    auto scc_ctor = (fn_TX_ctor)try_sym(g_libgui, scc_ctor_s, 2, "SCC::ctor");
-    if (!scc_ctor) { fprintf(stderr, "[OVL] ERR: SCC::ctor not found\n"); return false; }
-    void* scc = calloc(1, 512);
-    scc_ctor(scc);
-    fprintf(stderr, "[OVL] SCC created @ %p (uid=%d)\n", scc, (int)getuid());
+    // ── SurfaceComposerClient::getDefault() ────────────────────────────
+    // getDefault() returns sp<SCC> via x8 (non-trivial destructor).
+    // It's a static method that returns the already-connected global SCC.
+    // Available since Android 11 (API 30).
+    fprintf(stderr, "[OVL] uid=%d, getting SCC via getDefault()\n", (int)getuid());
 
-    // initCheck() — returns status_t: 0=OK, -19=ENODEV means SurfaceFlinger refused (SELinux/perms)
-    const char* initchk_s[] = { "_ZNK7android21SurfaceComposerClient9initCheckEv" };
+    void* fn_gd = dlsym(g_libgui, "_ZN7android21SurfaceComposerClient10getDefaultEv");
+    sp_t scc_sp = {nullptr};
+    if (fn_gd) {
+        call_x8_ret0(fn_gd, &scc_sp);
+        fprintf(stderr, "[OVL] getDefault() scc=%p\n", scc_sp.ptr);
+    }
+
+    // Fallback: construct SCC then call onFirstRef() to trigger connection
+    if (!scc_sp.ptr) {
+        fprintf(stderr, "[OVL] getDefault not found, trying ctor+onFirstRef\n");
+        const char* scc_ctor_s[] = {
+            "_ZN7android21SurfaceComposerClientC1Ev",
+            "_ZN7android21SurfaceComposerClientC2Ev",
+        };
+        auto scc_ctor = (fn_TX_ctor)try_sym(g_libgui, scc_ctor_s, 2, "SCC::ctor");
+        if (!scc_ctor) { fprintf(stderr, "[OVL] ERR: SCC::ctor not found\n"); return false; }
+        void* raw = calloc(1, 512);
+        scc_ctor(raw);
+        // onFirstRef() triggers the actual SurfaceFlinger connection
+        typedef void (*fn_ofr)(void*);
+        auto fn_ofr_ = (fn_ofr)dlsym(g_libgui, "_ZN7android21SurfaceComposerClient10onFirstRefEv");
+        if (fn_ofr_) { fn_ofr_(raw); fprintf(stderr, "[OVL] onFirstRef called\n"); }
+        scc_sp.ptr = raw;
+    }
+
+    void* scc = scc_sp.ptr;
+    if (!scc) { fprintf(stderr, "[OVL] ERR: no SCC\n"); return false; }
+
+    // initCheck() — should be 0 now
     typedef int32_t (*fn_initCheck)(void*);
-    auto fn_ic = (fn_initCheck)dlsym(g_libgui, initchk_s[0]);
+    auto fn_ic = (fn_initCheck)dlsym(g_libgui, "_ZNK7android21SurfaceComposerClient9initCheckEv");
     if (fn_ic) {
         int32_t ic = fn_ic(scc);
         fprintf(stderr, "[OVL] SCC initCheck=%d%s\n", ic,
-                ic == 0 ? " (OK)" : ic == -19 ? " (ENODEV — need root/SELinux)" : " (ERR)");
-        if (ic != 0) {
-            fprintf(stderr, "[OVL] HINT: run with: su -c /data/local/tmp/ffkernel.sh\n");
-            return false;
-        }
+                ic == 0 ? " OK" : ic == -19 ? " ENODEV(not connected)" : " ERR");
+        if (ic != 0) { return false; }
     }
 
     // ── String8 ─────────────────────────────────────────────────────────
@@ -245,9 +290,8 @@ bool overlay_create(OverlayContext& ctx) {
 
     sp_t surf_sp = {nullptr};
     if (get_surf_fn) {
-        typedef sp_t (*fn_getSurf_ret_t)(void*);
-        auto gsr = (fn_getSurf_ret_t)(void*)get_surf_fn;
-        surf_sp = gsr(sc);
+        // getSurface(this) returns sp<Surface> via x8 — use inline asm helper
+        call_x8_ret1((void*)get_surf_fn, sc, &surf_sp);
         fprintf(stderr, "[OVL] getSurface ptr=%p\n", surf_sp.ptr);
     } else {
         fprintf(stderr, "[OVL] getSurface: fn not found, scanning SC\n");
