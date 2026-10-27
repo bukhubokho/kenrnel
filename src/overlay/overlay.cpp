@@ -288,13 +288,27 @@ bool overlay_create(OverlayContext& ctx) {
     auto tx_show     = (fn_TX_show    )try_sym(g_libgui, tx_show_s,     3, "TX::show");
     auto tx_apply    = (fn_TX_apply   )try_sym(g_libgui, tx_apply_s,    2, "TX::apply");
 
-    char tx_buf[2048] = {};
+    // Heap-allocate Transaction (can be >2KB in Android 12 with vectors)
+    void* tx_buf = calloc(1, 4096);
     if (tx_ctor) tx_ctor(tx_buf);
-    if (tx_setlayer) tx_setlayer(tx_buf, sc, 0x7fffffff);
-    if (tx_show)     tx_show    (tx_buf, sc);
+    fprintf(stderr, "[OVL] TX ctor OK, setLayer=%p show=%p apply=%p\n",
+            (void*)tx_setlayer, (void*)tx_show, (void*)tx_apply);
+
+    // Android 12: setLayer/show take const sp<SurfaceControl>& — pass &sc_sp (pointer to sp wrapper)
+    // Android <10: they take SurfaceControl* — pass sc directly
+    // Detect by symbol: if ERKNS_2sp (sp& variant) was found → pass &sc_sp
+    // We try sp& first in our list (index 2), raw ptr is index 0/1
+    // Safe approach: always pass &sc_sp — for sp& version this is correct;
+    // for raw ptr version sc_sp.ptr == sc so &sc_sp points to the right pointer value.
+    // The function reads *(&sc_sp) = sc_sp.ptr = sc — same value, one level of indirection.
+    void* sc_arg = &sc_sp;  // works for both const sp<SC>& and SC* (sc_sp.ptr == sc)
+    if (tx_setlayer) tx_setlayer(tx_buf, sc_arg, 0x7fffffff);
+    fprintf(stderr, "[OVL] setLayer OK\n");
+    if (tx_show)     tx_show    (tx_buf, sc_arg);
+    fprintf(stderr, "[OVL] show OK\n");
     if (tx_apply)    tx_apply   (tx_buf, false);
-    fprintf(stderr, "[OVL] Transaction applied (ctor=%p setLayer=%p show=%p apply=%p)\n",
-            (void*)tx_ctor, (void*)tx_setlayer, (void*)tx_show, (void*)tx_apply);
+    fprintf(stderr, "[OVL] Transaction applied\n");
+    free(tx_buf);
 
     // ── getSurface() → ANativeWindow ────────────────────────────────────
     // getSurface returns sp<Surface> via x8 (indirect result register on ARM64)
