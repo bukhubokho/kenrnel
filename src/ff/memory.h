@@ -64,8 +64,11 @@ inline uint64_t find_il2cpp_base(uint32_t pid) {
 }
 
 inline bool ff_init(FFState& st) {
-    st.drv_fd = rt_open();
-    if (st.drv_fd < 0) return false;
+    // rt_open() scans /dev/ — only call once
+    if (st.drv_fd < 0) {
+        st.drv_fd = rt_open();
+        if (st.drv_fd < 0) return false;
+    }
 
     st.ff_pid = find_ff_pid();
     if (!st.ff_pid) {

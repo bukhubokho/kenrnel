@@ -144,9 +144,11 @@ int main() {
         // Double-press either volume button → toggle menu on/off
         if (input_consume_double_press(input)) {
             menu.visible = !menu.visible;
-            // When menu visible: allow touch so user can click items
-            // When menu hidden: NOT_TOUCHABLE so game gets all input
-            overlay_set_touchable(overlay, menu.visible);
+            // Run Binder IPC on background thread — don't block render loop
+            bool vis = menu.visible;
+            std::thread([&overlay, vis]() {
+                overlay_set_touchable(overlay, vis);
+            }).detach();
         }
 
         // Try to find FF in background — don't block rendering
