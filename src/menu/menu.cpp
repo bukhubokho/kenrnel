@@ -64,8 +64,9 @@ bool menu_draw(MenuState& menu, ESPConfig& esp_cfg,
     ImGuiIO& sio = ImGui::GetIO();
     float sw = sio.DisplaySize.x, sh = sio.DisplaySize.y;
     float scale = sio.FontGlobalScale > 0.f ? sio.FontGlobalScale : 1.f;
-    ImGui::SetNextWindowSize({380.f * scale, 520.f * scale}, ImGuiCond_Once);
-    ImGui::SetNextWindowPos({sw * 0.02f, sh * 0.02f}, ImGuiCond_Once);
+    float mw = 380.f * scale, mh = 520.f * scale;
+    ImGui::SetNextWindowSize({mw, mh}, ImGuiCond_Once);
+    ImGui::SetNextWindowPos({(sw - mw) * 0.5f, (sh - mh) * 0.5f}, ImGuiCond_Once);
 
     bool open = true;
     ImGui::Begin("##KernelMenu", &open,

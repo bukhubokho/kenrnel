@@ -165,8 +165,13 @@ int main() {
             io.DisplaySize = {(float)overlay.width, (float)overlay.height};
             // On rotation change, reposition menu to top-left of new display space
             if (overlay.cur_rot != prev_rot) {
+                // Re-center menu on rotation change
+                ImGuiIO& mio = ImGui::GetIO();
+                float scale = mio.FontGlobalScale > 0.f ? mio.FontGlobalScale : 1.f;
+                float mw = 380.f * scale, mh = 520.f * scale;
                 ImGui::SetNextWindowPos(
-                    {overlay.width * 0.02f, overlay.height * 0.02f},
+                    {(overlay.width  - mw) * 0.5f,
+                     (overlay.height - mh) * 0.5f},
                     ImGuiCond_Always);
             }
         }
