@@ -42,16 +42,6 @@ if [ -z "$DRV" ]; then
   exit 1
 fi
 
-# Check key
-KEY_FILE=$(dirname "$0")/key.txt
-if [ ! -f "$KEY_FILE" ]; then
-  KEY_FILE=/data/local/tmp/key.txt
-fi
-if [ ! -f "$KEY_FILE" ]; then
-  echo "[KERNEL] key.txt not found."
-  exit 1
-fi
-
 # Extract binary
 TMP=$(mktemp /data/local/tmp/.XXXXXX 2>/dev/null || echo /data/local/tmp/.ff$$)
 sed -n '/^#PAYLOAD_START$/,$p' "$0" | tail -n +2 | base64 -d 2>/dev/null > "$TMP"
