@@ -1,0 +1,6 @@
+build/
+build_android/
+*.sh.tmp
+*.o
+*.a
+*.so
