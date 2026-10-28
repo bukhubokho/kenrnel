@@ -60,11 +60,18 @@ bool menu_draw(MenuState& menu, ESPConfig& esp_cfg,
     ImGui::PushStyleColor(ImGuiCol_TabActive,     IM_COL32(70,100, 200, 255));
     ImGui::PushStyleColor(ImGuiCol_TabHovered,    IM_COL32(50, 70, 140, 240));
 
-    // Size proportional to screen; position managed by main.cpp (rotation-aware)
     ImGuiIO& sio = ImGui::GetIO();
+    float sw = sio.DisplaySize.x, sh = sio.DisplaySize.y;
     float scale = sio.FontGlobalScale > 0.f ? sio.FontGlobalScale : 1.f;
     float mw = 380.f * scale, mh = 520.f * scale;
     ImGui::SetNextWindowSize({mw, mh}, ImGuiCond_Once);
+    // Force-center on first show and on every rotation change.
+    // Must be called AFTER ImGui::NewFrame() — NewFrame clears NextWindowData,
+    // so any SetNextWindowPos from before NewFrame is lost.
+    if (menu.force_center) {
+        ImGui::SetNextWindowPos({(sw - mw) * 0.5f, (sh - mh) * 0.5f}, ImGuiCond_Always);
+        menu.force_center = false;
+    }
 
     bool open = true;
     ImGui::Begin("##KernelMenu", &open,

@@ -16,8 +16,9 @@ struct MenuState {
     float max_dist   = 300.f;
     bool  enemy_only = true;
     bool  no_recoil  = false;
-    bool  speed_hack = false;
-    float speed_mult = 1.0f;
+    bool  speed_hack   = false;
+    float speed_mult   = 1.0f;
+    bool  force_center = true;  // set true to snap menu to screen center next frame
 };
 
 // Call once after ImGui::NewFrame() and before ImGui::Render()

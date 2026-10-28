@@ -136,15 +136,7 @@ int main() {
 
     menu.visible = true;  // show immediately on launch
 
-    // Initial window position — center on current display
-    {
-        float scale = io.FontGlobalScale > 0.f ? io.FontGlobalScale : 1.f;
-        float mw = 380.f * scale, mh = 520.f * scale;
-        ImGui::SetNextWindowPos(
-            {(overlay.width  - mw) * 0.5f,
-             (overlay.height - mh) * 0.5f},
-            ImGuiCond_Always);
-    }
+    menu.force_center = true;  // center on first frame
 
     // Start input reader (touch + volume buttons)
     InputState input{};
@@ -173,14 +165,10 @@ int main() {
             input.screen_h.store(overlay.height);
             input.rotation.store(overlay.cur_rot);
             io.DisplaySize = {(float)overlay.width, (float)overlay.height};
-            // On rotation change, re-center menu on the new display
+            // On rotation change, tell menu_draw to re-center next frame
+            // (must happen after NewFrame — force_center flag defers it correctly)
             if (overlay.cur_rot != prev_rot) {
-                float _s = io.FontGlobalScale > 0.f ? io.FontGlobalScale : 1.f;
-                float _mw = 380.f * _s, _mh = 520.f * _s;
-                ImGui::SetNextWindowPos(
-                    {(overlay.width  - _mw) * 0.5f,
-                     (overlay.height - _mh) * 0.5f},
-                    ImGuiCond_Always);
+                menu.force_center = true;
             }
         }
 
