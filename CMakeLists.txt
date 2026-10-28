@@ -4,23 +4,25 @@ project(ffkernel)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ImGui sources (place imgui headers/sources in src/imgui/)
-set(IMGUI_SOURCES
+set(SOURCES
+    src/main.cpp
+    src/driver/driver.cpp
+    src/draw/draw.cpp
+    src/touch/Touch.cpp
     src/imgui/imgui.cpp
     src/imgui/imgui_draw.cpp
     src/imgui/imgui_tables.cpp
     src/imgui/imgui_widgets.cpp
     src/imgui/imgui_impl_android.cpp
     src/imgui/imgui_impl_opengl3.cpp
-)
-
-set(SOURCES
-    src/main.cpp
-    src/driver/driver.cpp
-    src/overlay/overlay.cpp
-    src/esp/esp.cpp
-    src/menu/menu.cpp
-    ${IMGUI_SOURCES}
+    src/ui/antilose_compat.cpp
+    src/ui/antilose_fonts.cpp
+    src/ui/antilose_box_shadow.cpp
+    src/ui/bar.cpp
+    src/ui/menu.cpp
+    src/ui/menu_inflex.cpp
+    src/ui/widgets/widgets.cpp
+    src/protect/oxorany.cpp
 )
 
 add_executable(ffkernel ${SOURCES})
@@ -30,22 +32,18 @@ target_include_directories(ffkernel PRIVATE
     src/imgui
 )
 
-# Force ImGui to use OpenGL ES 2.0 code path (no VAO, no glBindSampler)
-target_compile_definitions(ffkernel PRIVATE
-    IMGUI_IMPL_OPENGL_ES2
-)
+# GLES3 — matches Wolsaw draw.cpp (#version 300 es)
+# No IMGUI_IMPL_OPENGL_ES2 — we want the full GLES3 path
 
 # Android system libraries
 target_link_libraries(ffkernel
     log
     android
     EGL
-    GLESv2
+    GLESv3
     dl
     z
     m
-    # SurfaceComposerClient via runtime dlopen — no link-time dependency needed
-    # (libgui/libbinder loaded at runtime)
 )
 
 # Strip + optimize for size
