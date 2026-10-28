@@ -218,9 +218,12 @@
 // Pre-rotation for Android overlay: counteracts SurfaceFlinger's transform on our buffer.
 // 0=portrait (no-op), 1=SF rotates CCW (pre-rotate CW), 3=SF rotates CW (pre-rotate CCW)
 static int s_pre_rot = 0;
+static int s_log_reset = 0;
+
 void ImGui_ImplOpenGL3_SetRotation(int rot) {
     fprintf(stderr, "[GL] SetRotation %d→%d\n", s_pre_rot, rot);
     s_pre_rot = rot;
+    s_log_reset = 1;  // re-arm logging for the frames after rotation
 }
 
 // Forward declarations (defined later in this file)
@@ -459,12 +462,17 @@ static void ImGui_ImplOpenGL3_SetupRenderState(ImDrawData* draw_data, int fb_wid
     // that pre-rotates content so that SurfaceFlinger's transform produces
     // the correct landscape display.
     {
-        static int s_log_lim = 120;
+        static int s_log_lim = 0;
+        if (s_log_reset) { s_log_lim = 30; s_log_reset = 0; }
         if (s_log_lim > 0) {
             --s_log_lim;
-            fprintf(stderr, "[GL] SetupRS rot=%d fb=%dx%d disp=%.0fx%.0f\n",
+            // Also query actual EGL surface size via GL to detect EGL auto-resize
+            GLint vp[4] = {};
+            glGetIntegerv(GL_VIEWPORT, vp);
+            fprintf(stderr, "[GL] SetupRS rot=%d fb=%dx%d disp=%.0fx%.0f gl_vp=%dx%d\n",
                     s_pre_rot, fb_width, fb_height,
-                    draw_data->DisplaySize.x, draw_data->DisplaySize.y);
+                    draw_data->DisplaySize.x, draw_data->DisplaySize.y,
+                    vp[2], vp[3]);
         }
     }
     int vp_w = fb_width, vp_h = fb_height;
