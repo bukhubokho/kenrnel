@@ -54,21 +54,15 @@ int main() {
 
     touch::init(max_size, min_size, (uint8_t)displayInfo.orientation);
 
+    ui::bar::g_open = true;  // show menu immediately on launch
+
     while (true) {
         drawBegin();
 
-        bool is_landscape;
-#if defined(__x86_64__)
-        is_landscape = (displayInfo.orientation == 0 || displayInfo.orientation == 2);
-#else
-        is_landscape = (displayInfo.orientation == 1 || displayInfo.orientation == 3);
-#endif
-
-        if (is_landscape) {
-            ui::bar::set_game_alpha(1.0f);
-            if (ui::bar::g_open) {
-                ui::menu::render();
-            }
+        ui::bar::set_game_alpha(1.0f);
+        ui::bar::render();
+        if (ui::bar::g_open) {
+            ui::menu::render();
         }
 
         if (ui::menu::should_exit()) break;
