@@ -39,11 +39,14 @@ bool menu_draw(MenuState& menu, ESPConfig& esp_cfg,
 
     // Professional dark theme
     ImGuiStyle& st = ImGui::GetStyle();
-    st.WindowRounding    = 10.f;
-    st.FrameRounding     = 5.f;
-    st.ItemSpacing       = {8.f, 6.f};
-    st.WindowBorderSize  = 1.f;
-    st.FramePadding      = {8.f, 4.f};
+    st.WindowRounding        = 10.f;
+    st.FrameRounding         = 5.f;
+    st.ItemSpacing           = {8.f, 6.f};
+    st.WindowBorderSize      = 1.f;
+    st.FramePadding          = {8.f, 4.f};
+    // Allow dragging to all edges — zero out ImGui's default clamp padding
+    st.DisplayWindowPadding  = {0.f, 0.f};
+    st.DisplaySafeAreaPadding = {0.f, 0.f};
 
     ImGui::PushStyleColor(ImGuiCol_WindowBg,      IM_COL32(15, 15, 22,  245));
     ImGui::PushStyleColor(ImGuiCol_TitleBg,       IM_COL32(20, 20, 35,  255));

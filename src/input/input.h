@@ -161,7 +161,8 @@ static bool input_consume_double_press(InputState& st) {
     return st.double_press.exchange(false);
 }
 
-// Call each frame — drains touch queue into ImGui, remaps for current rotation
+// Call each frame — drains touch queue into ImGui, remaps for current rotation.
+// Only the last position per frame is forwarded; button events fire only on state change.
 #include "../imgui/imgui.h"
 static void input_pump_imgui(InputState& st) {
     std::vector<TouchEvent> events;
@@ -169,34 +170,45 @@ static void input_pump_imgui(InputState& st) {
         std::lock_guard<std::mutex> lk(st.touch_mtx);
         events.swap(st.touch_queue);
     }
+    if (events.empty()) return;
+
     ImGuiIO& io = ImGui::GetIO();
     int sw  = st.screen_w.load();
     int sh  = st.screen_h.load();
     int rot = st.rotation.load();
 
+    static bool s_last_down = false;
+
+    // Collect last position and final button state from this batch
+    float sx = 0.f, sy = 0.f;
+    bool  cur_down = s_last_down;
+
     for (auto& te : events) {
-        // te.x/y are normalized portrait coords [0..1]
         float nx = te.x, ny = te.y;
-        float sx, sy;
         switch (rot) {
-        case 1:  // 90° CW — phone rotated right, USB on right
+        case 1:
             sx = ny * sw;
             sy = (1.0f - nx) * sh;
             break;
-        case 3:  // 90° CCW — phone rotated left, USB on left
+        case 3:
             sx = (1.0f - ny) * sw;
             sy = nx * sh;
             break;
-        case 2:  // 180° — upside down
+        case 2:
             sx = (1.0f - nx) * sw;
             sy = (1.0f - ny) * sh;
             break;
-        default: // 0 — portrait, direct map
+        default:
             sx = nx * sw;
             sy = ny * sh;
             break;
         }
-        io.AddMousePosEvent(sx, sy);
-        io.AddMouseButtonEvent(0, te.down);
+        cur_down = te.down;
+    }
+
+    io.AddMousePosEvent(sx, sy);
+    if (cur_down != s_last_down) {
+        io.AddMouseButtonEvent(0, cur_down);
+        s_last_down = cur_down;
     }
 }
