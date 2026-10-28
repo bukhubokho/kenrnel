@@ -14,7 +14,6 @@ struct OverlayContext {
     int             nat_w       = 0;   // natural (portrait) width — set once
     int             nat_h       = 0;   // natural (portrait) height — set once
     int             cur_rot     = 0;   // last known rotation (0/1/2/3)
-    bool            buf_is_land = false; // true when buffer is currently landscape-sized
     bool            ready       = false;
     // Internal — kept for realtime flag toggling
     void*           sc_sp_ptr    = nullptr;

@@ -547,37 +547,25 @@ void overlay_query_size(OverlayContext& ctx) {
 
     static int s_last_hint = -99;
     if (hint != s_last_hint) {
-        fprintf(stderr, "[OVL] hint %d→%d buf_land=%d cur_rot=%d nat=%dx%d\n",
-                s_last_hint, hint, (int)ctx.buf_is_land, ctx.cur_rot, ctx.nat_w, ctx.nat_h);
+        fprintf(stderr, "[OVL] hint %d→%d cur_rot=%d nat=%dx%d\n",
+                s_last_hint, hint, ctx.cur_rot, ctx.nat_w, ctx.nat_h);
         s_last_hint = hint;
     }
 
-    if (hint == 0) return; // buffer already matches display — nothing to do
-
-    // Compute target rotation
+    // hint reflects the display's rotation state directly.
+    // It does NOT reset after setBuffersGeometry on this device —
+    // it stays at its value as long as the display is in that orientation.
+    // Direct mapping: hint=0→portrait, hint=4→home-right, hint=7→home-left.
     int rot;
-    if (ctx.buf_is_land) {
-        // Buffer is landscape but hint≠0 → display returned to portrait
-        rot = 0;
-    } else {
-        // Buffer is portrait but hint≠0 → display is landscape
-        // hint=4 (ROT_90 applied)  → home button on right → rot=3
-        // hint=7 (ROT_270 applied) → home button on left  → rot=1
-        if (hint == 4)      rot = 3;
-        else if (hint == 7) rot = 1;
-        else                rot = 0; // ROT_180 or unknown
-    }
+    if      (hint == 4) rot = 3;   // display rotated CCW → home on right
+    else if (hint == 7) rot = 1;   // display rotated CW  → home on left
+    else if (hint == 3) rot = 2;   // 180°
+    else                rot = 0;   // portrait
 
     if (rot != ctx.cur_rot) {
         ctx.cur_rot = rot;
-        int new_w, new_h;
-        if (rot == 1 || rot == 3) {
-            new_w = ctx.nat_h; new_h = ctx.nat_w;
-            ctx.buf_is_land = true;
-        } else {
-            new_w = ctx.nat_w; new_h = ctx.nat_h;
-            ctx.buf_is_land = false;
-        }
+        int new_w = (rot == 1 || rot == 3) ? ctx.nat_h : ctx.nat_w;
+        int new_h = (rot == 1 || rot == 3) ? ctx.nat_w : ctx.nat_h;
         ANativeWindow_setBuffersGeometry(ctx.window, new_w, new_h, 1 /*RGBA_8888*/);
         ctx.width  = new_w;
         ctx.height = new_h;
