@@ -218,7 +218,10 @@
 // Pre-rotation for Android overlay: counteracts SurfaceFlinger's transform on our buffer.
 // 0=portrait (no-op), 1=SF rotates CCW (pre-rotate CW), 3=SF rotates CW (pre-rotate CCW)
 static int s_pre_rot = 0;
-void ImGui_ImplOpenGL3_SetRotation(int rot) { s_pre_rot = rot; }
+void ImGui_ImplOpenGL3_SetRotation(int rot) {
+    fprintf(stderr, "[GL] SetRotation %d→%d\n", s_pre_rot, rot);
+    s_pre_rot = rot;
+}
 
 // Forward declarations (defined later in this file)
 bool ImGui_ImplOpenGL3_CreateFontsTexture();
@@ -455,6 +458,15 @@ static void ImGui_ImplOpenGL3_SetupRenderState(ImDrawData* draw_data, int fb_wid
     // set a rotated viewport, and build a rotation-aware projection matrix
     // that pre-rotates content so that SurfaceFlinger's transform produces
     // the correct landscape display.
+    {
+        static int s_log_lim = 60;
+        if (s_log_lim > 0) {
+            --s_log_lim;
+            fprintf(stderr, "[GL] SetupRS rot=%d fb=%dx%d disp=%.0fx%.0f\n",
+                    s_pre_rot, fb_width, fb_height,
+                    draw_data->DisplaySize.x, draw_data->DisplaySize.y);
+        }
+    }
     int vp_w = fb_width, vp_h = fb_height;
     if (s_pre_rot == 1 || s_pre_rot == 3) { vp_w = fb_height; vp_h = fb_width; }
     GL_CALL(glViewport(0, 0, (GLsizei)vp_w, (GLsizei)vp_h));
