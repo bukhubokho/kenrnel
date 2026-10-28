@@ -526,62 +526,43 @@ static int get_display_orientation(ANativeWindow* win) {
 }
 
 void overlay_query_size(OverlayContext& ctx) {
-    if (!ctx.window) return;
-    if (ctx.nat_w == 0) { ctx.nat_w = ctx.width; ctx.nat_h = ctx.height; }
+    if (ctx.surface == EGL_NO_SURFACE || ctx.display == EGL_NO_DISPLAY) return;
 
-    auto* w = reinterpret_cast<ANW_Internal*>(ctx.window);
-    if (!w || !w->query) return;
+    // Read actual EGL surface dimensions — updated by EGL after eglSwapBuffers
+    // when the underlying ANativeWindow resizes to match display orientation.
+    // This is the only reliable source: sw>sh = landscape, sw<sh = portrait,
+    // regardless of TRANSFORM_HINT state (hint becomes ambiguous after auto-resize).
+    int sw = 0, sh = 0;
+    eglQuerySurface(ctx.display, ctx.surface, EGL_WIDTH,  &sw);
+    eglQuerySurface(ctx.display, ctx.surface, EGL_HEIGHT, &sh);
+    if (sw <= 0 || sh <= 0) return;
 
-    // TRANSFORM_HINT (query 8): SurfaceFlinger tells us what 90° transform it will apply
-    // to our buffer to make it fit the current display orientation.
-    // hint=0  → buffer matches display — no action needed.
-    // hint≠0  → mismatch — we need to resize buffer.
-    //
-    // Interpreting hint depends on the current buffer orientation (buf_is_land):
-    //   buffer=portrait + hint≠0 → display is landscape; decode direction from hint value.
-    //   buffer=landscape + hint≠0 → display is back to portrait; go to rot=0.
-    //
-    // This is more reliable than DEFAULT_WIDTH/HEIGHT (6/7) which returns 0 on some devices.
-    int hint = 0;
-    w->query(ctx.window, 8 /*TRANSFORM_HINT*/, &hint);
-
-    static int s_last_hint = -99;
-    if (hint != s_last_hint) {
-        fprintf(stderr, "[OVL] hint %d→%d cur_rot=%d buf=%s nat=%dx%d\n",
-                s_last_hint, hint, ctx.cur_rot,
-                (ctx.cur_rot==1||ctx.cur_rot==3)?"land":"port",
-                ctx.nat_w, ctx.nat_h);
-        s_last_hint = hint;
+    // Record portrait dims on first call
+    if (ctx.nat_w == 0) {
+        ctx.nat_w = (sw <= sh) ? sw : sh;
+        ctx.nat_h = (sw <= sh) ? sh : sw;
     }
 
-    // hint semantics depend on the current buffer orientation:
-    //   hint=0 + buf=portrait → display is portrait  → rot=0
-    //   hint=0 + buf=landscape → EGL already resized; display is still landscape → keep cur_rot
-    //   hint=4 + buf=portrait → display is landscape CW  → rot=1
-    //   hint=4 + buf=landscape → display went back to portrait → rot=0
-    //   hint=7 + buf=portrait → display is landscape CCW → rot=3
-    //   hint=7 + buf=landscape → display went back to portrait → rot=0
-    bool buf_is_land = (ctx.cur_rot == 1 || ctx.cur_rot == 3);
     int rot;
-    if (hint == 0) {
-        rot = buf_is_land ? ctx.cur_rot : 0;   // landscape: keep; portrait: stay
-    } else if (hint == 4) {
-        rot = buf_is_land ? 0 : 1;             // land→portrait=0, port→landscape CW=1
-    } else if (hint == 7) {
-        rot = buf_is_land ? 0 : 3;             // land→portrait=0, port→landscape CCW=3
-    } else if (hint == 3) {
-        rot = 2;
+    if (sw > sh) {
+        // Landscape — use TRANSFORM_HINT only to distinguish CW vs CCW
+        int hint = 0;
+        if (ctx.window) {
+            auto* w = reinterpret_cast<ANW_Internal*>(ctx.window);
+            if (w && w->query) w->query(ctx.window, 8 /*TRANSFORM_HINT*/, &hint);
+        }
+        rot = (hint == 7) ? 3 : 1;
+    } else if (sw < sh) {
+        rot = 0;
     } else {
-        rot = ctx.cur_rot;
+        rot = ctx.cur_rot;  // square — keep current
     }
 
-    if (rot != ctx.cur_rot) {
+    if (sw != ctx.width || sh != ctx.height || rot != ctx.cur_rot) {
+        ctx.width   = sw;
+        ctx.height  = sh;
         ctx.cur_rot = rot;
-        // Let EGL resize naturally — no setBuffersGeometry.
-        // ctx.width/height = logical dims that match the EGL surface after resize.
-        ctx.width  = (rot == 1 || rot == 3) ? ctx.nat_h : ctx.nat_w;
-        ctx.height = (rot == 1 || rot == 3) ? ctx.nat_w : ctx.nat_h;
-        fprintf(stderr, "[OVL] → rot=%d logical=%dx%d\n", rot, ctx.width, ctx.height);
+        fprintf(stderr, "[OVL] → rot=%d surf=%dx%d\n", rot, sw, sh);
     }
 }
 
