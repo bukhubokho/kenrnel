@@ -547,21 +547,33 @@ void overlay_query_size(OverlayContext& ctx) {
 
     static int s_last_hint = -99;
     if (hint != s_last_hint) {
-        fprintf(stderr, "[OVL] hint %d→%d cur_rot=%d nat=%dx%d\n",
-                s_last_hint, hint, ctx.cur_rot, ctx.nat_w, ctx.nat_h);
+        fprintf(stderr, "[OVL] hint %d→%d cur_rot=%d buf=%s nat=%dx%d\n",
+                s_last_hint, hint, ctx.cur_rot,
+                (ctx.cur_rot==1||ctx.cur_rot==3)?"land":"port",
+                ctx.nat_w, ctx.nat_h);
         s_last_hint = hint;
     }
 
-    // hint reflects the display's rotation state directly.
-    // It does NOT reset after setBuffersGeometry on this device —
-    // it stays at its value as long as the display is in that orientation.
-    // hint=4 (HAL_ROT_90): SF applies 90°CCW to portrait buffer → device rotated 90°CW, home on left
-    // hint=7 (HAL_ROT_270): SF applies 90°CW to portrait buffer → device rotated 90°CCW, home on right
+    // hint semantics depend on the current buffer orientation:
+    //   hint=0 + buf=portrait → display is portrait  → rot=0
+    //   hint=0 + buf=landscape → EGL already resized; display is still landscape → keep cur_rot
+    //   hint=4 + buf=portrait → display is landscape CW  → rot=1
+    //   hint=4 + buf=landscape → display went back to portrait → rot=0
+    //   hint=7 + buf=portrait → display is landscape CCW → rot=3
+    //   hint=7 + buf=landscape → display went back to portrait → rot=0
+    bool buf_is_land = (ctx.cur_rot == 1 || ctx.cur_rot == 3);
     int rot;
-    if      (hint == 4) rot = 1;   // SF CCW → device CW → home on left
-    else if (hint == 7) rot = 3;   // SF CW  → device CCW → home on right
-    else if (hint == 3) rot = 2;   // 180°
-    else                rot = 0;   // portrait
+    if (hint == 0) {
+        rot = buf_is_land ? ctx.cur_rot : 0;   // landscape: keep; portrait: stay
+    } else if (hint == 4) {
+        rot = buf_is_land ? 0 : 1;             // land→portrait=0, port→landscape CW=1
+    } else if (hint == 7) {
+        rot = buf_is_land ? 0 : 3;             // land→portrait=0, port→landscape CCW=3
+    } else if (hint == 3) {
+        rot = 2;
+    } else {
+        rot = ctx.cur_rot;
+    }
 
     if (rot != ctx.cur_rot) {
         ctx.cur_rot = rot;
