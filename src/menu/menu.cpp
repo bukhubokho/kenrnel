@@ -3,180 +3,251 @@
 #include <cstdio>
 #include <cstring>
 
-// Internal tab state
 static int s_tab = 0;
 
-static void styled_toggle(const char* label, bool* v) {
-    ImVec2 sz = {40.f, 20.f};
-    ImVec2 p  = ImGui::GetCursorScreenPos();
+// ── colours ──────────────────────────────────────────────────────────────────
+#define C_BG        IM_COL32(13,  17,  30,  252)   // deep navy
+#define C_HEADER    IM_COL32(18,  24,  42,  255)   // slightly lighter navy
+#define C_BORDER    IM_COL32(52,  72, 120,  180)
+#define C_ACCENT    IM_COL32(56, 189, 248,  255)   // cyan-blue (tab active / section title)
+#define C_ACCENT2   IM_COL32(99, 202, 253,  200)   // lighter cyan
+#define C_TAB       IM_COL32(22,  30,  54,  220)
+#define C_TAB_HOV   IM_COL32(35,  52,  98,  230)
+#define C_TAB_ACT   IM_COL32(56, 189, 248,  255)
+#define C_BTN       IM_COL32(30,  80, 160,  220)
+#define C_BTN_HOV   IM_COL32(45, 110, 200,  255)
+#define C_BTN_ACT   IM_COL32(70, 150, 240,  255)
+#define C_FRAME     IM_COL32(22,  30,  54,  200)
+#define C_SLIDER    IM_COL32(56, 189, 248,  255)
+#define C_TEXT      IM_COL32(220, 230, 255,  255)
+#define C_TEXT_DIM  IM_COL32(110, 130, 175,  200)
+#define C_GREEN     IM_COL32( 72, 222, 120,  255)
+#define C_RED       IM_COL32(240,  70,  70,  255)
+#define C_TOGGLE_ON IM_COL32( 56, 189, 248,  255)
+#define C_TOGGLE_OFF IM_COL32(45,  55,  85,  255)
+
+static void push_style() {
+    ImGui::PushStyleColor(ImGuiCol_WindowBg,        C_BG);
+    ImGui::PushStyleColor(ImGuiCol_TitleBg,         C_HEADER);
+    ImGui::PushStyleColor(ImGuiCol_TitleBgActive,   C_HEADER);
+    ImGui::PushStyleColor(ImGuiCol_Border,          C_BORDER);
+    ImGui::PushStyleColor(ImGuiCol_Button,          C_BTN);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,   C_BTN_HOV);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,    C_BTN_ACT);
+    ImGui::PushStyleColor(ImGuiCol_FrameBg,         C_FRAME);
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,  IM_COL32(35,50,90,220));
+    ImGui::PushStyleColor(ImGuiCol_SliderGrab,      C_SLIDER);
+    ImGui::PushStyleColor(ImGuiCol_SliderGrabActive,IM_COL32(100,210,255,255));
+    ImGui::PushStyleColor(ImGuiCol_CheckMark,       C_ACCENT);
+    ImGui::PushStyleColor(ImGuiCol_Header,          IM_COL32(35,60,110,200));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered,   IM_COL32(50,85,155,220));
+    ImGui::PushStyleColor(ImGuiCol_Tab,             C_TAB);
+    ImGui::PushStyleColor(ImGuiCol_TabActive,       IM_COL32(18,24,42,255));
+    ImGui::PushStyleColor(ImGuiCol_TabHovered,      C_TAB_HOV);
+    ImGui::PushStyleColor(ImGuiCol_Text,            C_TEXT);
+    ImGui::PushStyleColor(ImGuiCol_Separator,       IM_COL32(40,60,110,180));
+    ImGui::PushStyleColor(ImGuiCol_PopupBg,         IM_COL32(16,22,40,250));
+}
+static constexpr int STYLE_COLORS = 20;
+
+// Pill-style toggle ──────────────────────────────────────────────────────────
+static void toggle(const char* label, bool* v) {
+    const ImVec2 sz  = {44.f, 22.f};
+    const float  r   = sz.y * 0.5f;
+    ImVec2 p = ImGui::GetCursorScreenPos();
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
-    bool clicked = ImGui::InvisibleButton(label, sz);
-    if (clicked) *v = !*v;
+    ImGui::InvisibleButton(label, sz);
+    if (ImGui::IsItemClicked()) *v = !*v;
 
-    ImU32 bg = *v ? IM_COL32(100, 220, 130, 255) : IM_COL32(60, 60, 70, 255);
-    float knob_x = *v ? p.x + sz.x - 11.f : p.x + 11.f;
-    dl->AddRectFilled(p, {p.x+sz.x, p.y+sz.y}, bg, sz.y*0.5f);
-    dl->AddCircleFilled({knob_x, p.y+sz.y*0.5f}, 8.f, IM_COL32(255,255,255,240));
+    // hover glow
+    ImU32 bg = *v ? C_TOGGLE_ON : C_TOGGLE_OFF;
+    if (ImGui::IsItemHovered()) bg = *v ? IM_COL32(80,205,255,255) : IM_COL32(55,68,105,255);
 
-    ImGui::SameLine();
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 2.f);
-    ImGui::Text("%s", label);
+    dl->AddRectFilled(p, {p.x+sz.x, p.y+sz.y}, bg, r);
+    // knob
+    float kx = *v ? p.x + sz.x - r : p.x + r;
+    dl->AddCircleFilled({kx, p.y + r}, r - 3.f, IM_COL32(255,255,255,245));
+
+    ImGui::SameLine(0.f, 8.f);
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 3.f);
+    ImGui::TextUnformatted(label);
 }
 
-static void section_header(const char* title) {
+// Cyan section header ────────────────────────────────────────────────────────
+static void section(const char* title) {
     ImGui::Spacing();
-    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(160, 200, 255, 255));
-    ImGui::Text("— %s", title);
+    ImGui::PushStyleColor(ImGuiCol_Text, C_ACCENT);
+    ImGui::TextUnformatted(title);
     ImGui::PopStyleColor();
+    ImGui::PushStyleColor(ImGuiCol_Separator, C_ACCENT);
     ImGui::Separator();
+    ImGui::PopStyleColor();
     ImGui::Spacing();
 }
 
+// Thin label above a slider ──────────────────────────────────────────────────
+static void slider_row(const char* id, const char* label,
+                       float* v, float lo, float hi, const char* fmt) {
+    ImGui::PushStyleColor(ImGuiCol_Text, C_TEXT_DIM);
+    ImGui::TextUnformatted(label);
+    ImGui::PopStyleColor();
+    ImGui::SetNextItemWidth(-1.f);
+    ImGui::SliderFloat(id, v, lo, hi, fmt);
+    ImGui::Spacing();
+}
+
+// ── main draw ────────────────────────────────────────────────────────────────
 bool menu_draw(MenuState& menu, ESPConfig& esp_cfg,
                const char* key_display, bool driver_ok) {
     if (!menu.visible) return true;
 
-    // Professional dark theme
     ImGuiStyle& st = ImGui::GetStyle();
-    st.WindowRounding        = 10.f;
-    st.FrameRounding         = 5.f;
-    st.ItemSpacing           = {8.f, 6.f};
+    st.WindowRounding        = 12.f;
+    st.FrameRounding         = 6.f;
+    st.TabRounding           = 6.f;
+    st.ItemSpacing           = {8.f, 7.f};
     st.WindowBorderSize      = 1.f;
-    st.FramePadding          = {8.f, 4.f};
-    // Allow dragging to all edges — zero out ImGui's default clamp padding
+    st.FramePadding          = {10.f, 5.f};
     st.DisplayWindowPadding  = {0.f, 0.f};
     st.DisplaySafeAreaPadding = {0.f, 0.f};
 
-    ImGui::PushStyleColor(ImGuiCol_WindowBg,      IM_COL32(15, 15, 22,  245));
-    ImGui::PushStyleColor(ImGuiCol_TitleBg,       IM_COL32(20, 20, 35,  255));
-    ImGui::PushStyleColor(ImGuiCol_TitleBgActive, IM_COL32(30, 30, 55,  255));
-    ImGui::PushStyleColor(ImGuiCol_Border,        IM_COL32(80, 80, 120, 180));
-    ImGui::PushStyleColor(ImGuiCol_Button,        IM_COL32(40, 40, 65,  220));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(60, 80, 140, 255));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  IM_COL32(80,120, 200, 255));
-    ImGui::PushStyleColor(ImGuiCol_FrameBg,       IM_COL32(25, 25, 40,  200));
-    ImGui::PushStyleColor(ImGuiCol_SliderGrab,    IM_COL32(100,160, 255, 255));
-    ImGui::PushStyleColor(ImGuiCol_Header,        IM_COL32(50, 60, 100, 200));
-    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, IM_COL32(70, 90, 160, 220));
-    ImGui::PushStyleColor(ImGuiCol_Tab,           IM_COL32(30, 30, 50,  220));
-    ImGui::PushStyleColor(ImGuiCol_TabActive,     IM_COL32(70,100, 200, 255));
-    ImGui::PushStyleColor(ImGuiCol_TabHovered,    IM_COL32(50, 70, 140, 240));
+    push_style();
 
-    ImGuiIO& sio = ImGui::GetIO();
-    float sw = sio.DisplaySize.x, sh = sio.DisplaySize.y;
-    float scale = sio.FontGlobalScale > 0.f ? sio.FontGlobalScale : 1.f;
-    float mw = 380.f * scale, mh = 520.f * scale;
+    ImGuiIO& io = ImGui::GetIO();
+    float sw = io.DisplaySize.x, sh = io.DisplaySize.y;
+    float scale = io.FontGlobalScale > 0.f ? io.FontGlobalScale : 1.f;
+    float mw = 400.f * scale, mh = 540.f * scale;
     ImGui::SetNextWindowSize({mw, mh}, ImGuiCond_Once);
-    // Force-center on first show and on every rotation change.
-    // Must be called AFTER ImGui::NewFrame() — NewFrame clears NextWindowData,
-    // so any SetNextWindowPos from before NewFrame is lost.
+
     if (menu.force_center) {
         float cx = (sw - mw) * 0.5f, cy = (sh - mh) * 0.5f;
-        fprintf(stderr, "[MENU] force_center: disp=%.0fx%.0f mw=%.0f mh=%.0f → pos=%.0f,%.0f\n",
-                sw, sh, mw, mh, cx, cy);
+        fprintf(stderr, "[MENU] force_center: disp=%.0fx%.0f → pos=%.0f,%.0f\n",
+                sw, sh, cx, cy);
         ImGui::SetNextWindowPos({cx, cy}, ImGuiCond_Always);
         menu.force_center = false;
     }
 
     bool open = true;
     ImGui::Begin("##KernelMenu", &open,
-                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
+                 ImGuiWindowFlags_NoCollapse |
+                 ImGuiWindowFlags_NoScrollbar |
+                 ImGuiWindowFlags_NoTitleBar);
 
-    // Header bar
-    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(130, 180, 255, 255));
-    ImGui::SetWindowFontScale(1.2f);
-    ImGui::Text("  KERNEL");
-    ImGui::PopStyleColor();
-    ImGui::SetWindowFontScale(1.0f);
-    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 90.f);
+    // ── Header bar ──────────────────────────────────────────────────────────
+    {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        ImVec2 wp = ImGui::GetWindowPos();
+        ImVec2 ws = ImGui::GetWindowSize();
+        // navy top strip
+        dl->AddRectFilled(wp, {wp.x + ws.x, wp.y + 44.f * scale},
+                          C_HEADER, 12.f,
+                          ImDrawFlags_RoundCornersTop);
+        // bottom edge accent line
+        dl->AddLine({wp.x, wp.y + 44.f*scale},
+                    {wp.x + ws.x, wp.y + 44.f*scale},
+                    C_BORDER, 1.f);
 
-    // Status indicator
-    if (driver_ok) {
-        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(80, 220, 80, 255));
-        ImGui::Text("⬤ ACTIVE");
-    } else {
-        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(220, 60, 60, 255));
-        ImGui::Text("⬤ NO DRV");
+        ImGui::SetCursorPos({12.f, 10.f * scale});
+        ImGui::PushStyleColor(ImGuiCol_Text, C_ACCENT);
+        ImGui::SetWindowFontScale(1.15f * scale);
+        ImGui::TextUnformatted("KERNEL");
+        ImGui::SetWindowFontScale(1.f);
+        ImGui::PopStyleColor();
+
+        // status pill (right side)
+        const char* status_lbl = driver_ok ? "ACTIVE" : "NO DRV";
+        ImU32 status_col = driver_ok ? C_GREEN : C_RED;
+        float pill_x = wp.x + ws.x - 80.f * scale;
+        float pill_y = wp.y + 10.f * scale;
+        dl->AddRectFilled({pill_x - 4, pill_y - 2},
+                          {pill_x + 68.f*scale, pill_y + 18.f*scale},
+                          IM_COL32(0,0,0,80), 8.f);
+        dl->AddCircleFilled({pill_x + 6.f, pill_y + 8.f}, 4.f, status_col);
+        ImGui::SetCursorPos({pill_x - wp.x + 14.f, 11.f * scale});
+        ImGui::PushStyleColor(ImGuiCol_Text, status_col);
+        ImGui::TextUnformatted(status_lbl);
+        ImGui::PopStyleColor();
+
+        ImGui::SetCursorPosY(48.f * scale);
     }
-    ImGui::PopStyleColor();
-    ImGui::Separator();
 
-    // Key display (truncated)
-    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(120,120,120,200));
-    ImGui::Text("  Key: %.16s...", key_display ? key_display : "none");
-    ImGui::PopStyleColor();
-    ImGui::Spacing();
+    // ── Tab bar ──────────────────────────────────────────────────────────────
+    ImGui::PushStyleColor(ImGuiCol_TabActive, C_HEADER);
+    if (ImGui::BeginTabBar("##tabs", ImGuiTabBarFlags_NoTooltip)) {
 
-    // Tab bar
-    if (ImGui::BeginTabBar("##tabs")) {
-        if (ImGui::BeginTabItem("ESP")) {
-            s_tab = 0;
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem("AIM")) {
-            s_tab = 1;
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem("MISC")) {
-            s_tab = 2;
-            ImGui::EndTabItem();
-        }
+        // helper: tab item — returns true on click, applies text colour
+        auto tab = [&](const char* lbl, int idx) {
+            bool is_act = (s_tab == idx);
+            if (is_act) ImGui::PushStyleColor(ImGuiCol_Text, C_ACCENT);
+            else        ImGui::PushStyleColor(ImGuiCol_Text, C_TEXT_DIM);
+            bool opened = ImGui::BeginTabItem(lbl);
+            ImGui::PopStyleColor();
+            if (opened) { s_tab = idx; ImGui::EndTabItem(); }
+        };
+
+        tab("Visuals",  0);
+        tab("Aimbot",   1);
+        tab("Misc",     2);
+
         ImGui::EndTabBar();
     }
+    ImGui::PopStyleColor(); // TabActive override
 
     ImGui::Spacing();
 
+    // ── Content ──────────────────────────────────────────────────────────────
     if (s_tab == 0) {
-        // ESP tab
-        section_header("Visuals");
-        styled_toggle("Box ESP",    &menu.esp_box);
-        styled_toggle("Health Bar", &menu.esp_hp);
-        styled_toggle("Head Dot",   &menu.esp_head);
-        styled_toggle("Name Tag",   &menu.esp_name);
-        styled_toggle("Distance",   &menu.esp_dist);
-        styled_toggle("Enemy Only", &menu.enemy_only);
+        // ── VISUALS ──
+        section("ESP");
+        toggle("Box ESP",    &menu.esp_box);
+        toggle("Health Bar", &menu.esp_hp);
+        toggle("Head Dot",   &menu.esp_head);
+        toggle("Name Tag",   &menu.esp_name);
+        toggle("Distance",   &menu.esp_dist);
+        toggle("Enemy Only", &menu.enemy_only);
         ImGui::Spacing();
-        ImGui::Text("Max Distance");
-        ImGui::SliderFloat("##dist", &menu.max_dist, 50.f, 500.f, "%.0f m");
+        slider_row("##dist", "Max Distance (m)",
+                   &menu.max_dist, 50.f, 500.f, "%.0f");
     }
     else if (s_tab == 1) {
-        // AIM tab
-        section_header("Aimbot");
-        styled_toggle("Aimbot",     &menu.aimbot);
-        styled_toggle("Silent Aim", &menu.silent_aim);
+        // ── AIMBOT ──
+        section("Aimbot");
+        toggle("Aimbot",     &menu.aimbot);
+        toggle("Silent Aim", &menu.silent_aim);
+        toggle("No Recoil",  &menu.no_recoil);
         ImGui::Spacing();
-        ImGui::Text("FOV");
-        ImGui::SliderFloat("##fov", &menu.aim_fov, 5.f, 180.f, "%.0f°");
-        ImGui::Text("Smoothing");
-        ImGui::SliderFloat("##smooth", &menu.aim_smooth, 0.01f, 1.f, "%.2f");
-        ImGui::Spacing();
-        section_header("Target Bone");
+        slider_row("##fov",    "FOV",       &menu.aim_fov,    5.f,  180.f, "%.0f°");
+        slider_row("##smooth", "Smoothing", &menu.aim_smooth, 0.01f,  1.f, "%.2f");
+
+        section("Target Bone");
+        ImGui::PushStyleColor(ImGuiCol_Text, C_TEXT_DIM);
         if (ImGui::RadioButton("Head",  menu.aim_bone == 0)) menu.aim_bone = 0;
-        ImGui::SameLine();
+        ImGui::SameLine(0.f, 20.f);
         if (ImGui::RadioButton("Chest", menu.aim_bone == 1)) menu.aim_bone = 1;
-        ImGui::Spacing();
-        styled_toggle("No Recoil", &menu.no_recoil);
+        ImGui::PopStyleColor();
     }
     else {
-        // MISC tab
-        section_header("Movement");
-        styled_toggle("Speed Hack", &menu.speed_hack);
+        // ── MISC ──
+        section("Movement");
+        toggle("Speed Hack", &menu.speed_hack);
         if (menu.speed_hack) {
-            ImGui::Text("Speed Multiplier");
-            ImGui::SliderFloat("##spd", &menu.speed_mult, 1.f, 3.f, "%.1fx");
+            slider_row("##spd", "Speed Multiplier", &menu.speed_mult, 1.f, 3.f, "%.1fx");
         }
-        ImGui::Spacing();
-        section_header("Info");
-        ImGui::Text("Driver:  %s", driver_ok ? "Connected" : "Offline");
-        ImGui::Text("Overlay: OpenGL ES 2.0");
+
+        section("Info");
+        ImGui::PushStyleColor(ImGuiCol_Text, C_TEXT_DIM);
+        ImGui::Text("Driver   %s", driver_ok ? "Connected" : "Offline");
+        ImGui::Text("Render   OpenGL ES 2.0");
+        if (key_display && key_display[0])
+            ImGui::Text("Key      %.20s", key_display);
+        ImGui::PopStyleColor();
     }
 
     ImGui::End();
-    ImGui::PopStyleColor(14);
+    ImGui::PopStyleColor(STYLE_COLORS);
 
-    if (!open) return false;
-    return true;
+    return open;
 }
 
 void menu_apply(const MenuState& menu, ESPConfig& esp) {
@@ -185,7 +256,7 @@ void menu_apply(const MenuState& menu, ESPConfig& esp) {
     esp.head_dot     = menu.esp_head;
     esp.name_tag     = menu.esp_name;
     esp.distance_tag = menu.esp_dist;
-    esp.show_enemies = menu.enemy_only ? true : true;
+    esp.show_enemies = true;
     esp.show_team    = !menu.enemy_only;
     esp.max_dist     = menu.max_dist;
 }
