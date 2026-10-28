@@ -304,7 +304,7 @@ namespace ui::menu {
         if(!begin_section(" ",
             ImVec2(ImGui::GetWindowSize().x-st.WindowPadding.x*2.f,TITLE_HEIGHT)))
             return;
-        const char* label="NexuraWare | By Wolsaw";
+        const char* label="CLAUDE PRO | BY @PICKMEBOY00";
         push_bold();
         const ImVec2 ts=ImGui::CalcTextSize(label);
         pop_bold();
@@ -352,8 +352,6 @@ namespace ui::menu {
         SyncMenuCfg();
         SyncAccentFromMenu();
 
-        // NexuraWare ватермарк — всегда
-        watermark.Render(Logo);
 
         if(g_alpha<=0.01f) return;
 
