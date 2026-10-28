@@ -5,6 +5,7 @@
 #include "other/diag.hpp"
 #include "protect/oxorany.hpp"
 #include "driver/driver.h"
+#include "touch/volume_key.hpp"
 
 #include <cstdio>
 #include <thread>
@@ -58,6 +59,7 @@ int main() {
     diag::log("INFO", "GUI initialized");
 
     touch::init(max_size, min_size, (uint8_t)displayInfo.orientation);
+    volume_key::init();  // double-press vol up or vol down toggles menu
 
     while (true) {
         drawBegin();
@@ -71,6 +73,7 @@ int main() {
         usleep(1500);
     }
 
+    volume_key::shutdown();
     shutdown();
     return 0;
 }
