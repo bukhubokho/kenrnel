@@ -18,6 +18,7 @@
 #include <chrono>
 #include <vector>
 #include <string>
+#include <algorithm>
 
 #define LOG_TAG "FFKRN"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
@@ -118,11 +119,14 @@ int main() {
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = {(float)overlay.width, (float)overlay.height};
     io.IniFilename = nullptr;
-    // Scale font: target ~22px rendered size on any screen density
-    // Default ImGui font is 13px; scale = target / 13
-    float dpi_scale = ((float)overlay.height / 1080.f) * 1.4f;
+    // Scale font based on portrait width (shorter dimension) — 1080 is reference.
+    // Using height causes 3.5x scale on tall screens, making the menu wider than display.
+    int portrait_px = std::min(overlay.width, overlay.height);
+    float dpi_scale = ((float)portrait_px / 1080.f) * 1.4f;
     if (dpi_scale < 1.0f) dpi_scale = 1.0f;
+    if (dpi_scale > 2.0f) dpi_scale = 2.0f;  // hard cap
     io.FontGlobalScale = dpi_scale;
+    fprintf(stderr, "[KERNEL] dpi_scale=%.2f portrait_px=%d\n", dpi_scale, portrait_px);
 
     fprintf(stderr, "[KERNEL] ImGui_ImplAndroid_Init...\n");
     ImGui_ImplAndroid_Init(overlay.window);
