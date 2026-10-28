@@ -146,7 +146,10 @@ static void get_screen_size(int& w, int& h) {
 
 bool overlay_create(OverlayContext& ctx) {
     get_screen_size(ctx.width, ctx.height);
-    fprintf(stderr, "[OVL] screen %dx%d\n", ctx.width, ctx.height);
+    // Always store portrait dims so nat_w < nat_h
+    ctx.nat_w = (ctx.width <= ctx.height) ? ctx.width  : ctx.height;
+    ctx.nat_h = (ctx.width <= ctx.height) ? ctx.height : ctx.width;
+    fprintf(stderr, "[OVL] screen %dx%d nat=%dx%d\n", ctx.width, ctx.height, ctx.nat_w, ctx.nat_h);
 
     if (!init_binder()) { fprintf(stderr, "[OVL] ERR: binder init failed\n"); return false; }
     fprintf(stderr, "[OVL] binder OK\n");
@@ -454,15 +457,14 @@ bool overlay_init_egl(OverlayContext& ctx) {
     eglChooseConfig(ctx.display, attribs, &cfg, 1, &ncfg);
     if (!ncfg) { LOGE("eglChooseConfig failed"); return false; }
 
-    // Get native pixel format from EGL config, then tell ANativeWindow to
-    // auto-resize to SF's preferred dims (w=0,h=0).  Without this call
-    // ANativeWindow is locked to its creation size forever and never signals
-    // EGL to resize when the display orientation changes.
+    // Cache pixel format and prime the ANativeWindow with portrait dims + format.
+    // overlay_query_size will call setBuffersGeometry again when orientation changes.
     {
         EGLint fmt = 1; // RGBA_8888 fallback
         eglGetConfigAttrib(ctx.display, cfg, EGL_NATIVE_VISUAL_ID, &fmt);
-        ANativeWindow_setBuffersGeometry(ctx.window, 0, 0, fmt);
-        fprintf(stderr, "[OVL] setBuffersGeometry(0,0,%d)\n", fmt);
+        ctx.egl_fmt = (int)fmt;
+        ANativeWindow_setBuffersGeometry(ctx.window, ctx.nat_w, ctx.nat_h, fmt);
+        fprintf(stderr, "[OVL] setBuffersGeometry(%d,%d,%d)\n", ctx.nat_w, ctx.nat_h, fmt);
     }
 
     ctx.surface = eglCreateWindowSurface(ctx.display, cfg, ctx.window, nullptr);
@@ -537,43 +539,46 @@ static int get_display_orientation(ANativeWindow* win) {
 }
 
 void overlay_query_size(OverlayContext& ctx) {
-    if (ctx.surface == EGL_NO_SURFACE || ctx.display == EGL_NO_DISPLAY) return;
+    if (!ctx.window || ctx.nat_w == 0 || ctx.nat_h == 0) return;
 
-    // Read actual EGL surface dimensions — updated by EGL after eglSwapBuffers
-    // when the underlying ANativeWindow resizes to match display orientation.
-    // This is the only reliable source: sw>sh = landscape, sw<sh = portrait,
-    // regardless of TRANSFORM_HINT state (hint becomes ambiguous after auto-resize).
-    int sw = 0, sh = 0;
-    eglQuerySurface(ctx.display, ctx.surface, EGL_WIDTH,  &sw);
-    eglQuerySurface(ctx.display, ctx.surface, EGL_HEIGHT, &sh);
-    if (sw <= 0 || sh <= 0) return;
+    // Use DEFAULT_WIDTH/HEIGHT queries (6/7) — these reflect the display's current
+    // orientation as set by SF, independent of our buffer size.
+    // TRANSFORM_HINT (8) becomes ambiguous after we resize the buffer, so we only
+    // use it to distinguish 90°CW vs 90°CCW once we know we're in landscape.
+    int orient = get_display_orientation(ctx.window);  // 0=portrait, 1=landscape, -1=unknown
+    if (orient < 0) orient = (ctx.cur_rot != 0) ? 1 : 0;  // keep last known if query fails
 
-    // Record portrait dims on first call
-    if (ctx.nat_w == 0) {
-        ctx.nat_w = (sw <= sh) ? sw : sh;
-        ctx.nat_h = (sw <= sh) ? sh : sw;
-    }
+    // Determine target buffer dims
+    int target_w = (orient == 1) ? ctx.nat_h : ctx.nat_w;
+    int target_h = (orient == 1) ? ctx.nat_w : ctx.nat_h;
 
-    int rot;
-    if (sw > sh) {
-        // Landscape — use TRANSFORM_HINT only to distinguish CW vs CCW
-        int hint = 0;
-        if (ctx.window) {
-            auto* w = reinterpret_cast<ANW_Internal*>(ctx.window);
-            if (w && w->query) w->query(ctx.window, 8 /*TRANSFORM_HINT*/, &hint);
+    // If buffer doesn't match target orientation, resize it explicitly.
+    // We must call setBuffersGeometry here (not once at init) because the
+    // ANativeWindow needs an explicit resize call each time orientation changes.
+    if (ctx.egl_fmt > 0 && ctx.surface != EGL_NO_SURFACE && ctx.display != EGL_NO_DISPLAY) {
+        int cur_sw = 0, cur_sh = 0;
+        eglQuerySurface(ctx.display, ctx.surface, EGL_WIDTH,  &cur_sw);
+        eglQuerySurface(ctx.display, ctx.surface, EGL_HEIGHT, &cur_sh);
+        if (cur_sw != target_w || cur_sh != target_h) {
+            ANativeWindow_setBuffersGeometry(ctx.window, target_w, target_h, ctx.egl_fmt);
+            fprintf(stderr, "[OVL] resize %dx%d → %dx%d\n", cur_sw, cur_sh, target_w, target_h);
         }
-        rot = (hint == 7) ? 3 : 1;
-    } else if (sw < sh) {
-        rot = 0;
-    } else {
-        rot = ctx.cur_rot;  // square — keep current
     }
 
-    if (sw != ctx.width || sh != ctx.height || rot != ctx.cur_rot) {
-        ctx.width   = sw;
-        ctx.height  = sh;
+    // Determine rotation (0=portrait, 1=90CW, 2=180, 3=90CCW)
+    int rot = 0;
+    if (orient == 1) {
+        int hint = 0;
+        auto* w = reinterpret_cast<ANW_Internal*>(ctx.window);
+        if (w && w->query) w->query(ctx.window, 8 /*TRANSFORM_HINT*/, &hint);
+        rot = (hint == 7) ? 3 : 1;
+    }
+
+    if (target_w != ctx.width || target_h != ctx.height || rot != ctx.cur_rot) {
+        ctx.width   = target_w;
+        ctx.height  = target_h;
         ctx.cur_rot = rot;
-        fprintf(stderr, "[OVL] → rot=%d surf=%dx%d\n", rot, sw, sh);
+        fprintf(stderr, "[OVL] → rot=%d %dx%d\n", rot, target_w, target_h);
     }
 }
 

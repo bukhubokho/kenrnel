@@ -14,6 +14,7 @@ struct OverlayContext {
     int             nat_w       = 0;   // natural (portrait) width — set once
     int             nat_h       = 0;   // natural (portrait) height — set once
     int             cur_rot     = 0;   // last known rotation (0/1/2/3)
+    int             egl_fmt     = 1;   // pixel format (RGBA_8888=1) cached for resize calls
     bool            ready       = false;
     // Internal — kept for realtime flag toggling
     void*           sc_sp_ptr    = nullptr;

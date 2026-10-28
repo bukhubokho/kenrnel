@@ -168,12 +168,7 @@ int main() {
             input.screen_w.store(overlay.width);
             input.screen_h.store(overlay.height);
             input.rotation.store(overlay.cur_rot);
-            // io.DisplaySize = square buffer so ImGui never clamps windows
-            // to a stale display size during orientation transitions.
-            // Menu uses menu.vis_w/h (actual visible area) for its own layout.
-            int max_buf = (overlay.nat_h > overlay.nat_w) ? overlay.nat_h : overlay.nat_w;
-            if (max_buf == 0) max_buf = overlay.height > overlay.width ? overlay.height : overlay.width;
-            io.DisplaySize = {(float)max_buf, (float)max_buf};
+            io.DisplaySize = {(float)overlay.width, (float)overlay.height};
             menu.vis_w = (float)overlay.width;
             menu.vis_h = (float)overlay.height;
             if (overlay.cur_rot != prev_rot) {
@@ -203,12 +198,8 @@ int main() {
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplAndroid_NewFrame();
-        // ImGui_ImplAndroid_NewFrame() overwrites io.DisplaySize — restore square.
-        {
-            int max_buf = (overlay.nat_h > overlay.nat_w) ? overlay.nat_h : overlay.nat_w;
-            if (max_buf == 0) max_buf = overlay.height > overlay.width ? overlay.height : overlay.width;
-            io.DisplaySize = {(float)max_buf, (float)max_buf};
-        }
+        // Restore correct DisplaySize — ImGui_ImplAndroid_NewFrame may overwrite it
+        io.DisplaySize = {(float)overlay.width, (float)overlay.height};
         input_pump_imgui(input);  // forward /dev/input touch events to ImGui
         ImGui::NewFrame();
 
