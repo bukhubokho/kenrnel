@@ -215,15 +215,8 @@
 #define GL_CALL(_CALL)      _CALL   // Call without error check
 #endif
 
-// Pre-rotation for Android overlay: counteracts SurfaceFlinger's transform on our buffer.
-// 0=portrait (no-op), 1=SF rotates CCW (pre-rotate CW), 3=SF rotates CW (pre-rotate CCW)
-static int s_pre_rot = 0;
-static int s_log_reset = 0;
-
-void ImGui_ImplOpenGL3_SetRotation(int rot) {
-    fprintf(stderr, "[GL] SetRotation %d→%d\n", s_pre_rot, rot);
-    s_pre_rot = rot;
-    s_log_reset = 1;  // re-arm logging for the frames after rotation
+void ImGui_ImplOpenGL3_SetRotation(int /*rot*/) {
+    // No-op: EGL auto-resizes to landscape, no buffer pre-rotation needed.
 }
 
 // Forward declarations (defined later in this file)
@@ -455,61 +448,12 @@ static void ImGui_ImplOpenGL3_SetupRenderState(ImDrawData* draw_data, int fb_wid
     }
 #endif
 
-    // Setup viewport, orthographic projection matrix
-    // When s_pre_rot != 0 the actual GL framebuffer is portrait (nat dims),
-    // while draw_data reflects the logical landscape dims. We swap fb dims,
-    // set a rotated viewport, and build a rotation-aware projection matrix
-    // that pre-rotates content so that SurfaceFlinger's transform produces
-    // the correct landscape display.
-    {
-        static int s_log_lim = 0;
-        if (s_log_reset) { s_log_lim = 30; s_log_reset = 0; }
-        if (s_log_lim > 0) {
-            --s_log_lim;
-            // Also query actual EGL surface size via GL to detect EGL auto-resize
-            GLint vp[4] = {};
-            glGetIntegerv(GL_VIEWPORT, vp);
-            fprintf(stderr, "[GL] SetupRS rot=%d fb=%dx%d disp=%.0fx%.0f gl_vp=%dx%d\n",
-                    s_pre_rot, fb_width, fb_height,
-                    draw_data->DisplaySize.x, draw_data->DisplaySize.y,
-                    vp[2], vp[3]);
-        }
-    }
-    int vp_w = fb_width, vp_h = fb_height;
-    if (s_pre_rot == 1 || s_pre_rot == 3) { vp_w = fb_height; vp_h = fb_width; }
-    GL_CALL(glViewport(0, 0, (GLsizei)vp_w, (GLsizei)vp_h));
-    float W = (float)vp_w, H = (float)vp_h;
+    // Setup viewport + standard orthographic projection.
+    // EGL auto-resizes to match display orientation, so fb_width/fb_height
+    // already reflect the actual surface dims (landscape when rotated).
+    GL_CALL(glViewport(0, 0, (GLsizei)fb_width, (GLsizei)fb_height));
     float ortho_projection[4][4];
-    if (s_pre_rot == 3) {
-        // SF rotates buffer 90° CW → pre-rotate -90° (CCW) to counteract
-        // ImGui vertex (ix,iy) → GL pixel (iy, ix): x↔y swap
-        const float p[4][4] = {
-            { 0.0f,    2.0f/H,  0.0f, 0.0f },
-            { 2.0f/W,  0.0f,    0.0f, 0.0f },
-            { 0.0f,    0.0f,   -1.0f, 0.0f },
-            { -1.0f,  -1.0f,    0.0f, 1.0f },
-        };
-        memcpy(ortho_projection, p, sizeof(p));
-    } else if (s_pre_rot == 1) {
-        // SF rotates buffer 90° CCW → pre-rotate +90° (CW) to counteract
-        const float p[4][4] = {
-            { 0.0f,   -2.0f/H,  0.0f, 0.0f },
-            { -2.0f/W, 0.0f,    0.0f, 0.0f },
-            { 0.0f,    0.0f,   -1.0f, 0.0f },
-            { 1.0f,    1.0f,    0.0f, 1.0f },
-        };
-        memcpy(ortho_projection, p, sizeof(p));
-    } else if (s_pre_rot == 2) {
-        // SF rotates 180° → flip both axes
-        const float p[4][4] = {
-            { -2.0f/W, 0.0f,    0.0f, 0.0f },
-            { 0.0f,   -2.0f/H,  0.0f, 0.0f },
-            { 0.0f,    0.0f,   -1.0f, 0.0f },
-            { 1.0f,    1.0f,    0.0f, 1.0f },
-        };
-        memcpy(ortho_projection, p, sizeof(p));
-    } else {
-        // rot=0: standard orthographic
+    {
         float L = draw_data->DisplayPos.x;
         float R = draw_data->DisplayPos.x + draw_data->DisplaySize.x;
         float T = draw_data->DisplayPos.y;
@@ -671,36 +615,12 @@ void    ImGui_ImplOpenGL3_RenderDrawData(ImDrawData* draw_data)
                 if (clip_max.x <= clip_min.x || clip_max.y <= clip_min.y)
                     continue;
 
-                // Apply scissor — transform clip rect to portrait framebuffer space
-                // clip_min/clip_max are in logical (landscape when rotated) pixel coords
+                // Standard scissor (GL y=0 at bottom, ImGui y=0 at top)
                 {
-                    int sx, sy, sw2, sh2;
-                    int pW = (s_pre_rot==1||s_pre_rot==3) ? fb_height : fb_width;
-                    int pH = (s_pre_rot==1||s_pre_rot==3) ? fb_width  : fb_height;
-                    if (s_pre_rot == 3) {
-                        // ImGui (ix,iy) → portrait GL (iy, ix)
-                        sx  = (int)clip_min.y;
-                        sy  = (int)clip_min.x;
-                        sw2 = (int)(clip_max.y - clip_min.y);
-                        sh2 = (int)(clip_max.x - clip_min.x);
-                    } else if (s_pre_rot == 1) {
-                        // ImGui (ix,iy) → portrait GL (W-iy, H-ix) (mirrored)
-                        sw2 = (int)(clip_max.y - clip_min.y);
-                        sh2 = (int)(clip_max.x - clip_min.x);
-                        sx  = (int)(pW - clip_max.y);
-                        sy  = (int)(pH - clip_max.x);
-                    } else if (s_pre_rot == 2) {
-                        // ImGui (ix,iy) → portrait GL (W-ix, iy) with y from bottom
-                        sw2 = (int)(clip_max.x - clip_min.x);
-                        sh2 = (int)(clip_max.y - clip_min.y);
-                        sx  = (int)(pW - clip_max.x);
-                        sy  = (int)clip_min.y;
-                    } else {
-                        sx  = (int)clip_min.x;
-                        sy  = (int)((float)fb_height - clip_max.y);
-                        sw2 = (int)(clip_max.x - clip_min.x);
-                        sh2 = (int)(clip_max.y - clip_min.y);
-                    }
+                    int sx  = (int)clip_min.x;
+                    int sy  = (int)((float)fb_height - clip_max.y);
+                    int sw2 = (int)(clip_max.x - clip_min.x);
+                    int sh2 = (int)(clip_max.y - clip_min.y);
                     if (sx < 0) sx = 0;
                     if (sy < 0) sy = 0;
                     GL_CALL(glScissor(sx, sy, sw2, sh2));

@@ -565,25 +565,18 @@ void overlay_query_size(OverlayContext& ctx) {
 
     if (rot != ctx.cur_rot) {
         ctx.cur_rot = rot;
-        // ctx.width/height hold logical (ImGui DisplaySize) dims.
+        // Let EGL resize naturally — no setBuffersGeometry.
+        // ctx.width/height = logical dims that match the EGL surface after resize.
         ctx.width  = (rot == 1 || rot == 3) ? ctx.nat_h : ctx.nat_w;
         ctx.height = (rot == 1 || rot == 3) ? ctx.nat_w : ctx.nat_h;
-
-        // Lock the ANativeWindow buffer at portrait dims so EGL never auto-resizes
-        // to landscape. Without this, EGL sees the rotated window and creates a
-        // landscape buffer — glViewport(portrait) then renders into the wrong region.
-        // WINDOW_FORMAT_RGBA_8888 = 1
-        int gbr = ANativeWindow_setBuffersGeometry(ctx.window, ctx.nat_w, ctx.nat_h, 1);
-        fprintf(stderr, "[OVL] → rot=%d logical=%dx%d buf locked %dx%d (setGeom=%d)\n",
-                rot, ctx.width, ctx.height, ctx.nat_w, ctx.nat_h, gbr);
+        fprintf(stderr, "[OVL] → rot=%d logical=%dx%d\n", rot, ctx.width, ctx.height);
     }
 }
 
 void overlay_begin_frame(const OverlayContext& ctx) {
-    // Buffer is always portrait — use nat dims for initial viewport clear
-    int bw = ctx.nat_w > 0 ? ctx.nat_w : ctx.width;
-    int bh = ctx.nat_h > 0 ? ctx.nat_h : ctx.height;
-    glViewport(0, 0, bw, bh);
+    // Use logical dims — EGL auto-resizes to match display orientation,
+    // so ctx.width/height reflects the actual EGL surface size.
+    glViewport(0, 0, ctx.width, ctx.height);
     glClearColor(0.f, 0.f, 0.f, 0.f);
     glClear(GL_COLOR_BUFFER_BIT);
     glEnable(GL_BLEND);
