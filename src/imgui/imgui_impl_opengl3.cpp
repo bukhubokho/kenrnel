@@ -459,7 +459,7 @@ static void ImGui_ImplOpenGL3_SetupRenderState(ImDrawData* draw_data, int fb_wid
     // that pre-rotates content so that SurfaceFlinger's transform produces
     // the correct landscape display.
     {
-        static int s_log_lim = 60;
+        static int s_log_lim = 120;
         if (s_log_lim > 0) {
             --s_log_lim;
             fprintf(stderr, "[GL] SetupRS rot=%d fb=%dx%d disp=%.0fx%.0f\n",
