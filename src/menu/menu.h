@@ -19,6 +19,8 @@ struct MenuState {
     bool  speed_hack   = false;
     float speed_mult   = 1.0f;
     bool  force_center = true;  // set true to snap menu to screen center next frame
+    float vis_w = 0.f;          // current visible width  (updated from overlay each frame)
+    float vis_h = 0.f;          // current visible height (updated from overlay each frame)
 };
 
 // Call once after ImGui::NewFrame() and before ImGui::Render()

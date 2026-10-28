@@ -168,9 +168,14 @@ int main() {
             input.screen_w.store(overlay.width);
             input.screen_h.store(overlay.height);
             input.rotation.store(overlay.cur_rot);
-            io.DisplaySize = {(float)overlay.width, (float)overlay.height};
-            // On rotation change, tell menu_draw to re-center next frame
-            // (must happen after NewFrame — force_center flag defers it correctly)
+            // io.DisplaySize = square buffer so ImGui never clamps windows
+            // to a stale display size during orientation transitions.
+            // Menu uses menu.vis_w/h (actual visible area) for its own layout.
+            int max_buf = (overlay.nat_h > overlay.nat_w) ? overlay.nat_h : overlay.nat_w;
+            if (max_buf == 0) max_buf = overlay.height > overlay.width ? overlay.height : overlay.width;
+            io.DisplaySize = {(float)max_buf, (float)max_buf};
+            menu.vis_w = (float)overlay.width;
+            menu.vis_h = (float)overlay.height;
             if (overlay.cur_rot != prev_rot) {
                 menu.force_center = true;
                 ImGui_ImplOpenGL3_SetRotation(overlay.cur_rot);
@@ -198,11 +203,12 @@ int main() {
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplAndroid_NewFrame();
-        // ImGui_ImplAndroid_NewFrame() overwrites io.DisplaySize with
-        // ANativeWindow_getWidth/Height — which returns the buffer size and can
-        // lag behind or return portrait dims after setBuffersGeometry.
-        // Force it to the correct dims we computed in overlay_query_size.
-        io.DisplaySize = {(float)overlay.width, (float)overlay.height};
+        // ImGui_ImplAndroid_NewFrame() overwrites io.DisplaySize — restore square.
+        {
+            int max_buf = (overlay.nat_h > overlay.nat_w) ? overlay.nat_h : overlay.nat_w;
+            if (max_buf == 0) max_buf = overlay.height > overlay.width ? overlay.height : overlay.width;
+            io.DisplaySize = {(float)max_buf, (float)max_buf};
+        }
         input_pump_imgui(input);  // forward /dev/input touch events to ImGui
         ImGui::NewFrame();
 

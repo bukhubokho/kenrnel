@@ -230,10 +230,12 @@ bool menu_draw(MenuState& menu, ESPConfig& esp_cfg,
     if (!menu.visible) return true;
 
     ImGuiIO& io = ImGui::GetIO();
-    float sw = io.DisplaySize.x, sh = io.DisplaySize.y;
+    // Use visible area (actual display dims) for sizing and centering.
+    // io.DisplaySize is set to the square buffer (max_size×max_size) so ImGui
+    // never clamps windows outside visible bounds due to a stale DisplaySize.
+    float sw = (menu.vis_w > 0.f) ? menu.vis_w : io.DisplaySize.x;
+    float sh = (menu.vis_h > 0.f) ? menu.vis_h : io.DisplaySize.y;
 
-    // Window size: fits both portrait (1220 wide) and landscape (2712 wide).
-    // Cap at Wolsaw's 1400x850 max but shrink to 88%/82% of display if smaller.
     float WW = std::min(sw * 0.88f, 1400.f);
     float WH = std::min(sh * 0.82f,  850.f);
 
@@ -243,7 +245,7 @@ bool menu_draw(MenuState& menu, ESPConfig& esp_cfg,
         float cy = (sh - WH) * 0.5f;
         if (cx < 0.f) cx = 0.f;
         if (cy < 0.f) cy = 0.f;
-        fprintf(stderr, "[MENU] center: disp=%.0fx%.0f wnd=%.0fx%.0f → pos=%.0f,%.0f\n",
+        fprintf(stderr, "[MENU] center: vis=%.0fx%.0f wnd=%.0fx%.0f → pos=%.0f,%.0f\n",
                 sw, sh, WW, WH, cx, cy);
         ImGui::SetNextWindowPos({cx, cy}, ImGuiCond_Always);
         menu.force_center = false;
