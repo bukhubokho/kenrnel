@@ -369,15 +369,6 @@ std::vector<Section>& Sections() {
 
     // ── Settings ──────────────────────────────────────────────────────────────
     { I_GEAR, "Settings", {
-        { "Exploits", {
-            T("Bone Size", &cfg.boneSize),
-            T("Auto Win (HOST only!)", &cfg.autoWin),
-        }},
-        { "Hit Data", {
-            T("Hit Logs",   &cfg.hitLogs),
-            T("Hit Sound",  &cfg.hitSound),
-            Sel("Sound",    &cfg.hitSoundType, OPT(kSound)),
-        }},
         { "System", {
             Btn("Exit Cheat"),
         }},

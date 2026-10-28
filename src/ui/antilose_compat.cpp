@@ -144,11 +144,6 @@ void SyncMenuCfg() {
     cfg::settings::tb_fire_y_pct    = Menu::cfg.tbFireYPct;
 
     // Settings / Items
-    cfg::settings::bone_size      = Menu::cfg.boneSize;
-    cfg::settings::auto_win       = Menu::cfg.autoWin;
-    cfg::settings::hit_logs       = Menu::cfg.hitLogs;
-    cfg::settings::hit_sound      = Menu::cfg.hitSound;
-    cfg::settings::hit_sound_type = Menu::cfg.hitSoundType;
     cfg::settings::item_esp       = Menu::cfg.itemEsp;
     cfg::settings::weapons        = Menu::cfg.weapons;
     cfg::settings::ammo           = Menu::cfg.ammo;

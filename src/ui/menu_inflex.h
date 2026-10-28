@@ -122,9 +122,6 @@ struct Settings {
     int  prediction = 1;        // 0=Low 1=Medium 2=High
 
     // ── Settings ──────────────────────────────────────────────────────────────
-    bool boneSize = false, autoWin = false;
-    bool hitLogs  = false, hitSound = false;
-    int  hitSoundType = 0;
     bool exitRequested = false;
 
     // ── Theme ─────────────────────────────────────────────────────────────────
