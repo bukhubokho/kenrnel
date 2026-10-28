@@ -502,22 +502,27 @@ struct ANW_Internal {
     int (*query)(const void*, int what, int* value);
 };
 
-// NATIVE_WINDOW_TRANSFORM_HINT = 8
-// hint values: 0=portrait, 4=ROT_90(landscape CW), 3=ROT_180, 7=ROT_270(landscape CCW)
-// No permissions needed — reads from our own window object in memory.
-static int get_rotation_from_hint(ANativeWindow* win) {
+// Query display's preferred dimensions — these reflect display orientation,
+// NOT our buffer size. Independent of what we pass to setBuffersGeometry.
+// NATIVE_WINDOW_DEFAULT_WIDTH=6, NATIVE_WINDOW_DEFAULT_HEIGHT=7
+static int get_display_orientation(ANativeWindow* win) {
     if (!win) return -1;
     auto* w = reinterpret_cast<ANW_Internal*>(win);
     if (!w->query) return -1;
-    int hint = 0;
-    if (w->query(win, 8 /*NATIVE_WINDOW_TRANSFORM_HINT*/, &hint) != 0) return -1;
-    switch (hint & 7) {
-    case 0: return 0;
-    case 4: return 1;   // HAL_TRANSFORM_ROT_90  → display 90° CW
-    case 3: return 2;   // HAL_TRANSFORM_ROT_180 → display 180°
-    case 7: return 3;   // HAL_TRANSFORM_ROT_270 → display 90° CCW
-    default: return 0;
+    int dw = 0, dh = 0;
+    w->query(win, 6 /*DEFAULT_WIDTH*/, &dw);
+    w->query(win, 7 /*DEFAULT_HEIGHT*/, &dh);
+    if (dw > 0 && dh > 0) {
+        return (dw > dh) ? 1 : 0;  // landscape=1, portrait=0
     }
+    // Fallback: transform hint — read BEFORE we've resized (only useful at startup)
+    int hint = 0;
+    if (w->query(win, 8 /*TRANSFORM_HINT*/, &hint) != 0) return -1;
+    // hint=4 means display wants ROT_90 applied → landscape
+    // hint=0 after we already resized → ambiguous, skip
+    if (hint == 4 || hint == 7) return 1;
+    if (hint == 3)               return 2;
+    return 0;
 }
 
 void overlay_query_size(OverlayContext& ctx) {
@@ -526,7 +531,7 @@ void overlay_query_size(OverlayContext& ctx) {
     // Store natural (portrait) dims once
     if (ctx.nat_w == 0) { ctx.nat_w = ctx.width; ctx.nat_h = ctx.height; }
 
-    int rot = get_rotation_from_hint(ctx.window);
+    int rot = get_display_orientation(ctx.window);
     if (rot < 0) rot = ctx.cur_rot;
 
     if (rot != ctx.cur_rot) {
