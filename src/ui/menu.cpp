@@ -37,50 +37,82 @@ namespace ui::menu {
     static float lerp_float(float a, float b, float t) { return a + (b - a) * t; }
 
     // ── Style ────────────────────────────────────────────────────────────────
-    static void init_style() {
-        if (g_style_init) return;
+    static void apply_theme(int theme) {
         ImGuiStyle& s = ImGui::GetStyle();
-        ImGui::StyleColorsDark();
-        s.WindowBorderSize  = 1.f; s.ChildBorderSize   = 1.f;
-        s.FrameBorderSize   = 1.f; s.WindowRounding    = 0.f;
-        s.ChildRounding     = 0.f; s.FrameRounding     = 0.f;
-        s.PopupRounding     = 0.f; s.ScrollbarRounding = 0.f;
-        s.GrabRounding      = 0.f;
-        s.Colors[ImGuiCol_Text]                 = ImVec4(1.f,  1.f,  1.f,  1.f);
-        s.Colors[ImGuiCol_TextDisabled]         = ImVec4(.5f,  .5f,  .5f,  1.f);
-        s.Colors[ImGuiCol_WindowBg]             = ImVec4(.04f, .04f, .04f, 1.f);
-        s.Colors[ImGuiCol_ChildBg]              = ImVec4(.06f, .06f, .06f, 1.f);
-        s.Colors[ImGuiCol_PopupBg]              = ImVec4(.08f, .08f, .08f, .94f);
-        s.Colors[ImGuiCol_Border]               = ImVec4(0.f,  0.f,  0.f,  1.f);
-        s.Colors[ImGuiCol_BorderShadow]         = ImVec4(0.f,  0.f,  0.f,  0.f);
-        s.Colors[ImGuiCol_FrameBg]              = ImVec4(.04f, .04f, .04f, 1.f);
-        s.Colors[ImGuiCol_FrameBgHovered]       = ImVec4(.07f, .07f, .07f, 1.f);
-        s.Colors[ImGuiCol_FrameBgActive]        = ImVec4(.10f, .10f, .10f, 1.f);
-        s.Colors[ImGuiCol_TitleBg]              = ImVec4(.04f, .04f, .04f, 1.f);
-        s.Colors[ImGuiCol_TitleBgActive]        = ImVec4(.16f, .29f, .48f, 1.f);
-        s.Colors[ImGuiCol_ScrollbarBg]          = ImVec4(.02f, .02f, .02f, .53f);
-        s.Colors[ImGuiCol_ScrollbarGrab]        = ImVec4(.31f, .31f, .31f, 1.f);
-        s.Colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(.41f, .41f, .41f, 1.f);
-        s.Colors[ImGuiCol_ScrollbarGrabActive]  = ImVec4(.51f, .51f, .51f, 1.f);
-        s.Colors[ImGuiCol_CheckMark]            = ImVec4(1.f,  1.f,  1.f,  1.f);
-        s.Colors[ImGuiCol_SliderGrab]           = ImVec4(1.f,  1.f,  1.f,  1.f);
-        s.Colors[ImGuiCol_SliderGrabActive]     = ImVec4(1.f,  1.f,  1.f,  1.f);
-        s.Colors[ImGuiCol_Button]               = ImVec4(.04f, .04f, .04f, 1.f);
-        s.Colors[ImGuiCol_ButtonHovered]        = ImVec4(.08f, .08f, .08f, 1.f);
-        s.Colors[ImGuiCol_ButtonActive]         = ImVec4(.12f, .12f, .12f, 1.f);
-        s.Colors[ImGuiCol_Header]               = ImVec4(.06f, .06f, .06f, 1.f);
-        s.Colors[ImGuiCol_HeaderHovered]        = ImVec4(.08f, .08f, .08f, 1.f);
-        s.Colors[ImGuiCol_HeaderActive]         = ImVec4(.10f, .10f, .10f, 1.f);
-        s.Colors[ImGuiCol_Separator]            = ImVec4(.20f, .20f, .20f, 1.f);
-        s.Colors[ImGuiCol_ResizeGrip]           = ImVec4(.25f, .25f, .25f, 1.f);
-        s.Colors[ImGuiCol_ResizeGripHovered]    = ImVec4(.25f, .25f, .25f, 1.f);
-        s.Colors[ImGuiCol_ResizeGripActive]     = ImVec4(.35f, .35f, .35f, 1.f);
-        s.Colors[ImGuiCol_TextSelectedBg]       = ImVec4(.26f, .59f, .98f, .35f);
-        s.Colors[ImGuiCol_ModalWindowDimBg]     = ImVec4(.05f, .05f, .05f, .65f);
+        // shape — same for all themes
+        s.WindowBorderSize = 1.f; s.ChildBorderSize  = 1.f;
+        s.FrameBorderSize  = 1.f; s.WindowRounding   = 6.f;
+        s.ChildRounding    = 4.f; s.FrameRounding    = 4.f;
+        s.PopupRounding    = 4.f; s.ScrollbarRounding= 4.f;
+        s.GrabRounding     = 4.f;
         s.WindowPadding = ImVec2(16.f, 16.f);
         s.FramePadding  = ImVec2(8.f,  4.f);
         s.ItemSpacing   = ImVec2(12.f, 10.f);
         s.ScrollbarSize = 10.f;
+
+        if (theme == 1) {
+            // ── Light ────────────────────────────────────────────────────────
+            ImGui::StyleColorsLight();
+            s.Colors[ImGuiCol_WindowBg]  = ImVec4(.94f,.94f,.94f,1.f);
+            s.Colors[ImGuiCol_ChildBg]   = ImVec4(.88f,.88f,.88f,1.f);
+            s.Colors[ImGuiCol_FrameBg]   = ImVec4(.80f,.80f,.80f,1.f);
+            s.Colors[ImGuiCol_Text]      = ImVec4(.10f,.10f,.10f,1.f);
+            s.Colors[ImGuiCol_TextDisabled]=ImVec4(.50f,.50f,.50f,1.f);
+            s.Colors[ImGuiCol_Button]    = ImVec4(.75f,.75f,.75f,1.f);
+            s.Colors[ImGuiCol_ButtonHovered]=ImVec4(.65f,.65f,.65f,1.f);
+            s.Colors[ImGuiCol_ButtonActive] =ImVec4(.55f,.55f,.55f,1.f);
+            s.Colors[ImGuiCol_Header]       =ImVec4(.78f,.78f,.78f,1.f);
+            s.Colors[ImGuiCol_HeaderHovered]=ImVec4(.70f,.70f,.70f,1.f);
+            s.Colors[ImGuiCol_CheckMark]    =ImVec4(.20f,.20f,.80f,1.f);
+            s.Colors[ImGuiCol_SliderGrab]   =ImVec4(.20f,.20f,.80f,1.f);
+            s.Colors[ImGuiCol_Border]       =ImVec4(.60f,.60f,.60f,1.f);
+        } else if (theme == 2) {
+            // ── Neon ─────────────────────────────────────────────────────────
+            ImGui::StyleColorsDark();
+            s.Colors[ImGuiCol_WindowBg]  = ImVec4(.02f,.02f,.05f,1.f);
+            s.Colors[ImGuiCol_ChildBg]   = ImVec4(.03f,.03f,.08f,1.f);
+            s.Colors[ImGuiCol_FrameBg]   = ImVec4(.04f,.04f,.10f,1.f);
+            s.Colors[ImGuiCol_FrameBgHovered]=ImVec4(.06f,.06f,.16f,1.f);
+            s.Colors[ImGuiCol_FrameBgActive] =ImVec4(.08f,.08f,.20f,1.f);
+            s.Colors[ImGuiCol_Text]      = ImVec4(.0f, 1.f, .9f, 1.f);
+            s.Colors[ImGuiCol_TextDisabled]=ImVec4(.0f,.5f,.45f,1.f);
+            s.Colors[ImGuiCol_CheckMark] = ImVec4(.0f,1.f,.5f,1.f);
+            s.Colors[ImGuiCol_SliderGrab]= ImVec4(.0f,.8f,1.f,1.f);
+            s.Colors[ImGuiCol_SliderGrabActive]=ImVec4(.0f,1.f,.8f,1.f);
+            s.Colors[ImGuiCol_Button]    = ImVec4(.0f,.15f,.25f,1.f);
+            s.Colors[ImGuiCol_ButtonHovered]=ImVec4(.0f,.25f,.40f,1.f);
+            s.Colors[ImGuiCol_ButtonActive] =ImVec4(.0f,.35f,.55f,1.f);
+            s.Colors[ImGuiCol_Header]       =ImVec4(.0f,.20f,.30f,1.f);
+            s.Colors[ImGuiCol_HeaderHovered]=ImVec4(.0f,.30f,.45f,1.f);
+            s.Colors[ImGuiCol_Border]       =ImVec4(.0f,.5f,.8f,.6f);
+            s.Colors[ImGuiCol_Separator]    =ImVec4(.0f,.4f,.6f,1.f);
+            s.Colors[ImGuiCol_TitleBgActive]=ImVec4(.0f,.15f,.25f,1.f);
+        } else {
+            // ── Dark (default) ───────────────────────────────────────────────
+            ImGui::StyleColorsDark();
+            s.Colors[ImGuiCol_WindowBg]  = ImVec4(.04f,.04f,.04f,1.f);
+            s.Colors[ImGuiCol_ChildBg]   = ImVec4(.06f,.06f,.06f,1.f);
+            s.Colors[ImGuiCol_FrameBg]   = ImVec4(.04f,.04f,.04f,1.f);
+            s.Colors[ImGuiCol_FrameBgHovered]=ImVec4(.07f,.07f,.07f,1.f);
+            s.Colors[ImGuiCol_FrameBgActive] =ImVec4(.10f,.10f,.10f,1.f);
+            s.Colors[ImGuiCol_Text]      = ImVec4(1.f, 1.f, 1.f, 1.f);
+            s.Colors[ImGuiCol_TextDisabled]=ImVec4(.5f,.5f,.5f,1.f);
+            s.Colors[ImGuiCol_CheckMark] = ImVec4(1.f,1.f,1.f,1.f);
+            s.Colors[ImGuiCol_SliderGrab]= ImVec4(1.f,1.f,1.f,1.f);
+            s.Colors[ImGuiCol_SliderGrabActive]=ImVec4(1.f,1.f,1.f,1.f);
+            s.Colors[ImGuiCol_Button]    = ImVec4(.04f,.04f,.04f,1.f);
+            s.Colors[ImGuiCol_ButtonHovered]=ImVec4(.08f,.08f,.08f,1.f);
+            s.Colors[ImGuiCol_ButtonActive] =ImVec4(.12f,.12f,.12f,1.f);
+            s.Colors[ImGuiCol_Header]       =ImVec4(.06f,.06f,.06f,1.f);
+            s.Colors[ImGuiCol_HeaderHovered]=ImVec4(.08f,.08f,.08f,1.f);
+            s.Colors[ImGuiCol_Border]       =ImVec4(0.f, 0.f, 0.f, 1.f);
+            s.Colors[ImGuiCol_Separator]    =ImVec4(.20f,.20f,.20f,1.f);
+        }
+    }
+
+    static void init_style() {
+        if (g_style_init) return;
+        apply_theme(0);
         g_style_init = true;
     }
 
@@ -171,38 +203,56 @@ namespace ui::menu {
     // TAB 0 — VISUALS
     // ════════════════════════════════════════════════════════════════════════
     static void tab_visuals() {
-        const ImVec2 cs=half_size();
+        const ImVec2 cs = half_size();
 
-        if (begin_section("esp",cs,true)) {
+        // ── Left: toggles ────────────────────────────────────────────────────
+        if (begin_section("esp", cs, true)) {
             push_bold();
-            ImGui::Checkbox("Box ESP",    &Menu::cfg.boxEsp);
-            ImGui::Checkbox("Name",       &Menu::cfg.name);
-            ImGui::Checkbox("Health bar", &Menu::cfg.healthBar);
-            ImGui::Checkbox("Distance",   &Menu::cfg.distance);
-            ImGui::Checkbox("Snapline",   &Menu::cfg.snapline);
-            ImGui::Checkbox("Head dot",   &Menu::cfg.headdot);
-            ImGui::Checkbox("Skeleton",   &Menu::cfg.skeleton);
+            ImGui::Checkbox("Enable ESP",   &Menu::cfg.espEnabled);
             sep();
-            combo_vec("Box style",&Menu::cfg.boxStyle,{"2D","Corner","3D"});
-            ImGui::SliderInt("Max dist",  &Menu::cfg.espDist, 50, 600);
+            ImGui::BeginDisabled(!Menu::cfg.espEnabled);
+            ImGui::Checkbox("Name",         &Menu::cfg.name);
+            ImGui::Checkbox("Box",          &Menu::cfg.boxEsp);
+            ImGui::Checkbox("Health bar",   &Menu::cfg.healthBar);
+            ImGui::Checkbox("Snap line",    &Menu::cfg.snapline);
+            ImGui::Checkbox("Enemy count",  &Menu::cfg.enemyCount);
+            ImGui::Checkbox("Distance",     &Menu::cfg.distance);
+            ImGui::Checkbox("Skeleton",     &Menu::cfg.skeleton);
+            ImGui::EndDisabled();
             pop_bold();
         }
         end_section();
         ImGui::SameLine();
 
-        if (begin_section("colors & effects",cs,true)) {
+        // ── Right: colors + thickness ────────────────────────────────────────
+        if (begin_section("colors & thickness", cs, true)) {
             push_bold();
-            ImGui::TextDisabled("ESP Glow");
-            ImGui::Checkbox("Enable glow",    &Menu::cfg.espGlow);
-            if (Menu::cfg.espGlow) {
-                ImGui::SliderInt("Glow size",  &Menu::cfg.espGlowSize,  4, 24);
-                ImGui::SliderInt("Glow alpha", &Menu::cfg.espGlowAlpha, 5, 80);
-            }
-            sep();
-            ImGui::TextDisabled("Effects");
-            ImGui::Checkbox("Hit particles", &Menu::cfg.hitParticles);
-            ImGui::Checkbox("Death effect",  &Menu::cfg.deathEffect);
-            ImGui::Checkbox("Death ring",    &Menu::cfg.deathRing);
+            ImGui::BeginDisabled(!Menu::cfg.espEnabled);
+
+            auto row = [](const char* lbl, ImVec4* col, float* thick, float tmin=0.5f, float tmax=5.f) {
+                ImGui::TextUnformatted(lbl);
+                ImGui::SetNextItemWidth(100.f);
+                std::string cid = std::string("##c_") + lbl;
+                ImGui::ColorEdit4(cid.c_str(), &col->x,
+                    ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
+                if (thick) {
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(-1.f);
+                    std::string tid = std::string("##t_") + lbl;
+                    ImGui::SliderFloat(tid.c_str(), thick, tmin, tmax, "%.1f px");
+                }
+                ImGui::Spacing();
+            };
+
+            row("Name",        &Menu::cfg.nameColor,       &Menu::cfg.nameThick);
+            row("Box",         &Menu::cfg.boxColor,        &Menu::cfg.boxThick);
+            row("Health bar",  &Menu::cfg.hpBarColor,      &Menu::cfg.hpBarThick);
+            row("Snap line",   &Menu::cfg.snapLineColor,   &Menu::cfg.snapLineThick);
+            row("Enemy count", &Menu::cfg.enemyCountColor, nullptr);
+            row("Distance",    &Menu::cfg.distanceColor,   &Menu::cfg.distanceThick);
+            row("Skeleton",    &Menu::cfg.skeletonColor,   &Menu::cfg.skeletonThick);
+
+            ImGui::EndDisabled();
             pop_bold();
         }
         end_section();
@@ -212,54 +262,43 @@ namespace ui::menu {
     // TAB 1 — SETTINGS
     // ════════════════════════════════════════════════════════════════════════
     static void tab_settings() {
-        const ImVec2 cs=half_size();
+        const ImVec2 cs = half_size();
 
-        if (begin_section("hit sounds & item esp",cs,true)) {
+        if (begin_section("info", cs, true)) {
             push_bold();
-            ImGui::TextDisabled("Hit sounds");
-            ImGui::Checkbox("Hit sound##hs",  &Menu::cfg.hitSound);
-            if (Menu::cfg.hitSound)
-                combo_vec("Sound type",&Menu::cfg.hitSoundType,{"Click","Bell","Pop"});
-            ImGui::Checkbox("Hit logs",       &Menu::cfg.hitLogs);
+            ImGui::TextDisabled("Version");
+            ImGui::TextUnformatted("CLAUDE PRO v1.0");
+            ImGui::TextUnformatted("Developer: @PICKMEBOY00");
             sep();
-            ImGui::TextDisabled("Item ESP");
-            ImGui::Checkbox("Enable##ie",     &Menu::cfg.itemEsp);
-            if (Menu::cfg.itemEsp) {
-                ImGui::Checkbox("Weapons##ie",&Menu::cfg.weapons);
-                ImGui::Checkbox("Ammo##ie",  &Menu::cfg.ammo);
-                ImGui::Checkbox("Medkits##ie",&Menu::cfg.medkits);
-                ImGui::SliderInt("Item dist", &Menu::cfg.itemDistance, 20, 500);
+            ImGui::TextDisabled("System");
+            {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "Screen: %.0f x %.0f", g_sw, g_sh);
+                ImGui::TextUnformatted(buf);
+                std::snprintf(buf, sizeof(buf), "FPS: %.0f", ImGui::GetIO().Framerate);
+                ImGui::TextUnformatted(buf);
             }
-            sep();
-            ImGui::TextDisabled("Throwables");
-            ImGui::Checkbox("Grenade warn",   &Menu::cfg.grenadeWarning);
-            ImGui::Checkbox("Trajectory",     &Menu::cfg.trajectory);
-            if (Menu::cfg.trajectory)
-                combo_vec("Prediction",&Menu::cfg.prediction,{"Low","Med","High"});
             pop_bold();
         }
         end_section();
         ImGui::SameLine();
 
-        if (begin_section("system",cs,true)) {
+        if (begin_section("appearance & exit", cs, true)) {
             push_bold();
-            ImGui::TextDisabled("Debug");
-            ImGui::Checkbox("Bone size debug",&Menu::cfg.boneSize);
-            ImGui::Checkbox("Auto win",       &Menu::cfg.autoWin);
-            sep();
-            ImGui::TextDisabled("Info");
-            {
-                char buf[64];
-                std::snprintf(buf,sizeof(buf),"Screen: %.0f x %.0f",g_sw,g_sh);
-                ImGui::TextUnformatted(buf);
-                std::snprintf(buf,sizeof(buf),"FPS: %.0f",ImGui::GetIO().Framerate);
-                ImGui::TextUnformatted(buf);
+            ImGui::TextDisabled("Theme");
+            const char* themes[3] = {"Dark","Light","Neon"};
+            for (int i = 0; i < 3; i++) {
+                bool sel = (Menu::cfg.theme == i);
+                if (sel) ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(.25f,.45f,.75f,1.f));
+                if (ImGui::Selectable(themes[i], sel, 0, ImVec2(0, 0)))
+                    Menu::cfg.theme = i;
+                if (sel) ImGui::PopStyleColor();
             }
             sep();
-            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(.35f,.06f,.06f,1.f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(.55f,.10f,.10f,1.f));
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(.70f,.14f,.14f,1.f));
-            if (ImGui::Button("Exit",ImVec2(-1.f,0.f)))
+            ImGui::PushStyleColor(ImGuiCol_Button,         ImVec4(.35f,.06f,.06f,1.f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,  ImVec4(.55f,.10f,.10f,1.f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,   ImVec4(.70f,.14f,.14f,1.f));
+            if (ImGui::Button("Exit", ImVec2(-1.f, 0.f)))
                 Menu::cfg.exitRequested = true;
             ImGui::PopStyleColor(3);
             pop_bold();
@@ -341,6 +380,7 @@ namespace ui::menu {
         Menu::open = bar::g_open;
 
         init_style();
+        apply_theme(Menu::cfg.theme);
 
         const float dt=ImClamp(ImGui::GetIO().DeltaTime*10.f,0.f,1.f);
         g_alpha=lerp_float(g_alpha,bar::g_open?1.f:0.f,dt);

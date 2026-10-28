@@ -122,10 +122,30 @@ struct Settings {
     int  prediction = 1;        // 0=Low 1=Medium 2=High
 
     // ── Settings ──────────────────────────────────────────────────────────────
-    bool boneSize = false, autoWin = false;
-    bool hitLogs  = false, hitSound = false;
-    int  hitSoundType = 0;      // 0=Click 1=Bell 2=Pop
-    bool exitRequested = false; // set true → main loop should unload
+    bool exitRequested = false;
+
+    // ── Theme ─────────────────────────────────────────────────────────────────
+    int  theme = 0;   // 0=Dark 1=Light 2=Neon
+
+    // ── ESP master + per-feature toggles ─────────────────────────────────────
+    bool espEnabled   = false;
+    // (name, boxEsp, healthBar, snapline, distance, skeleton reused from above)
+    bool enemyCount   = false;
+
+    // ── ESP per-feature colors & thickness ───────────────────────────────────
+    ImVec4 nameColor       = {1.f,  1.f,  1.f,  1.f};
+    float  nameThick       = 1.f;
+    ImVec4 boxColor        = {1.f,  1.f,  1.f,  1.f};
+    float  boxThick        = 1.f;
+    ImVec4 hpBarColor      = {0.2f, 0.9f, 0.2f, 1.f};
+    float  hpBarThick      = 2.f;
+    ImVec4 snapLineColor   = {1.f,  0.8f, 0.f,  1.f};
+    float  snapLineThick   = 1.f;
+    ImVec4 enemyCountColor = {1.f,  0.4f, 0.4f, 1.f};
+    ImVec4 distanceColor   = {0.7f, 0.7f, 1.f,  1.f};
+    float  distanceThick   = 1.f;
+    ImVec4 skeletonColor   = {1.f,  0.5f, 0.f,  1.f};
+    float  skeletonThick   = 1.f;
 
     // ── Colors ────────────────────────────────────────────────────────────────
     Colors col = {
