@@ -527,48 +527,61 @@ static int get_display_orientation(ANativeWindow* win) {
 
 void overlay_query_size(OverlayContext& ctx) {
     if (!ctx.window) return;
-
-    // Store natural (portrait) dims once
     if (ctx.nat_w == 0) { ctx.nat_w = ctx.width; ctx.nat_h = ctx.height; }
 
     auto* w = reinterpret_cast<ANW_Internal*>(ctx.window);
     if (!w || !w->query) return;
 
-    // Use DEFAULT_WIDTH/HEIGHT for stable landscape/portrait detection
-    int dw = 0, dh = 0;
-    w->query(ctx.window, 6 /*DEFAULT_WIDTH*/,  &dw);
-    w->query(ctx.window, 7 /*DEFAULT_HEIGHT*/, &dh);
-    bool is_landscape = (dw > 0 && dh > 0 && dw > dh);
+    // TRANSFORM_HINT (query 8): SurfaceFlinger tells us what 90° transform it will apply
+    // to our buffer to make it fit the current display orientation.
+    // hint=0  → buffer matches display — no action needed.
+    // hint≠0  → mismatch — we need to resize buffer.
+    //
+    // Interpreting hint depends on the current buffer orientation (buf_is_land):
+    //   buffer=portrait + hint≠0 → display is landscape; decode direction from hint value.
+    //   buffer=landscape + hint≠0 → display is back to portrait; go to rot=0.
+    //
+    // This is more reliable than DEFAULT_WIDTH/HEIGHT (6/7) which returns 0 on some devices.
+    int hint = 0;
+    w->query(ctx.window, 8 /*TRANSFORM_HINT*/, &hint);
 
+    static int s_last_hint = -99;
+    if (hint != s_last_hint) {
+        fprintf(stderr, "[OVL] hint %d→%d buf_land=%d cur_rot=%d nat=%dx%d\n",
+                s_last_hint, hint, (int)ctx.buf_is_land, ctx.cur_rot, ctx.nat_w, ctx.nat_h);
+        s_last_hint = hint;
+    }
+
+    if (hint == 0) return; // buffer already matches display — nothing to do
+
+    // Compute target rotation
     int rot;
-    if (is_landscape) {
-        // Determine CW vs CCW from transform hint BEFORE our first setBuffersGeometry.
-        // hint=4 (ROT_90)  → ROTATION_270 (home button right) → rot=3 touch mapping
-        // hint=7 (ROT_270) → ROTATION_90  (home button left)  → rot=1 touch mapping
-        // After setBuffersGeometry hint becomes 0 → use cached land_rot.
-        if (!ctx.land_rot_init) {
-            int hint = 0;
-            w->query(ctx.window, 8 /*TRANSFORM_HINT*/, &hint);
-            if (hint == 4)       ctx.land_rot = 3;   // ROTATION_270
-            else if (hint == 7)  ctx.land_rot = 1;   // ROTATION_90
-            // hint==0 at startup in portrait is normal; keep default land_rot=1
-            ctx.land_rot_init = (hint != 0);  // only lock once we've seen a nonzero hint
-            fprintf(stderr, "[OVL] land hint=%d → land_rot=%d\n", hint, ctx.land_rot);
-        }
-        rot = ctx.land_rot;
-    } else {
+    if (ctx.buf_is_land) {
+        // Buffer is landscape but hint≠0 → display returned to portrait
         rot = 0;
+    } else {
+        // Buffer is portrait but hint≠0 → display is landscape
+        // hint=4 (ROT_90 applied)  → home button on right → rot=3
+        // hint=7 (ROT_270 applied) → home button on left  → rot=1
+        if (hint == 4)      rot = 3;
+        else if (hint == 7) rot = 1;
+        else                rot = 0; // ROT_180 or unknown
     }
 
     if (rot != ctx.cur_rot) {
         ctx.cur_rot = rot;
-        int new_w = (rot == 1 || rot == 3) ? ctx.nat_h : ctx.nat_w;
-        int new_h = (rot == 1 || rot == 3) ? ctx.nat_w : ctx.nat_h;
+        int new_w, new_h;
+        if (rot == 1 || rot == 3) {
+            new_w = ctx.nat_h; new_h = ctx.nat_w;
+            ctx.buf_is_land = true;
+        } else {
+            new_w = ctx.nat_w; new_h = ctx.nat_h;
+            ctx.buf_is_land = false;
+        }
         ANativeWindow_setBuffersGeometry(ctx.window, new_w, new_h, 1 /*RGBA_8888*/);
         ctx.width  = new_w;
         ctx.height = new_h;
-        fprintf(stderr, "[OVL] rot=%d land_rot=%d → buffer %dx%d\n",
-                rot, ctx.land_rot, new_w, new_h);
+        fprintf(stderr, "[OVL] → rot=%d buf=%dx%d\n", rot, new_w, new_h);
     }
 }
 
