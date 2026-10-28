@@ -1,6 +1,7 @@
 #include "draw/draw.h"
 #include "ui/menu.hpp"
 #include "ui/bar.hpp"
+#include "ui/theme/theme.hpp"
 #include "other/diag.hpp"
 #include "protect/oxorany.hpp"
 #include "driver/driver.h"
@@ -36,6 +37,10 @@ int main() {
     native_window_screen_x = max_size;
     native_window_screen_y = max_size;
 
+    // g_sw/g_sh used by bar and menu for scaling/positioning
+    g_sw = (float)max_size;
+    g_sh = (float)min_size;
+
     diag::log("INFO", "display %dx%d orientation=%d overlay=%dx%d",
               displayInfo.width, displayInfo.height, displayInfo.orientation,
               native_window_screen_x, native_window_screen_y);
@@ -54,21 +59,17 @@ int main() {
 
     touch::init(max_size, min_size, (uint8_t)displayInfo.orientation);
 
-    ui::bar::g_open = true;  // show menu immediately on launch
-
     while (true) {
         drawBegin();
 
         ui::bar::set_game_alpha(1.0f);
-        ui::bar::render();
-        if (ui::bar::g_open) {
-            ui::menu::render();
-        }
+        ui::bar::render();   // draws toggle bar + updates g_open
+        ui::menu::render();  // always render menu (menu manages own visibility)
 
         if (ui::menu::should_exit()) break;
 
         drawEnd();
-        usleep(ui::bar::g_open ? 1500 : 4000);
+        usleep(1500);
     }
 
     shutdown();
