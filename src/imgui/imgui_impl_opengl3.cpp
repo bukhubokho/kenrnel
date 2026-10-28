@@ -220,6 +220,11 @@
 static int s_pre_rot = 0;
 void ImGui_ImplOpenGL3_SetRotation(int rot) { s_pre_rot = rot; }
 
+// Forward declarations (defined later in this file)
+bool ImGui_ImplOpenGL3_CreateFontsTexture();
+bool ImGui_ImplOpenGL3_CreateDeviceObjects();
+void ImGui_ImplOpenGL3_DestroyDeviceObjects();
+
 // OpenGL Data
 struct ImGui_ImplOpenGL3_Data
 {
