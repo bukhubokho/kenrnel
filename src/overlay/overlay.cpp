@@ -540,63 +540,47 @@ static int get_display_orientation(ANativeWindow* win) {
 
 void overlay_query_size(OverlayContext& ctx) {
     if (!ctx.window || ctx.nat_w == 0 || ctx.nat_h == 0) return;
-    if (ctx.surface == EGL_NO_SURFACE || ctx.display == EGL_NO_DISPLAY) return;
 
-    // Read current buffer dims from EGL
-    int cur_sw = 0, cur_sh = 0;
-    eglQuerySurface(ctx.display, ctx.surface, EGL_WIDTH,  &cur_sw);
-    eglQuerySurface(ctx.display, ctx.surface, EGL_HEIGHT, &cur_sh);
-    if (cur_sw <= 0 || cur_sh <= 0) return;
-
-    // TRANSFORM_HINT (8): non-zero means the display orientation differs from
-    // our buffer — SF is applying a transform to compensate.
-    // hint=4 (ROT_90 CW) or hint=7 (ROT_270 / FLIP+ROT_90 CCW) = 90° mismatch.
-    // Strategy: when hint is non-zero, swap buffer dims to match display.
-    // After the swap + eglSwapBuffers, SF realigns → hint goes back to 0.
-    // No oscillation: we only act when hint != 0, and it becomes 0 after resize.
+    // TRANSFORM_HINT (8) tells us the rotation SF applies to our buffer when
+    // compositing onto the display.  It PERSISTS — resizing the buffer does not
+    // clear it because SF still needs the same rotation for this display state.
+    // Strategy: never resize the buffer.  Keep it portrait (nat_w × nat_h) always.
+    // Use hint to derive logical screen dims and cur_rot for ImGui/touch mapping.
+    //   hint=0 → portrait  (logical = nat_w × nat_h, rot=0)
+    //   hint=4 → 90° CW   (logical = nat_h × nat_w, rot=1)
+    //   hint=7 → 90° CCW  (logical = nat_h × nat_w, rot=3)
+    //   hint=3 → 180°     (logical = nat_w × nat_h, rot=2)
     int hint = 0;
     {
         auto* w = reinterpret_cast<ANW_Internal*>(ctx.window);
         if (w && w->query) w->query(ctx.window, 8 /*TRANSFORM_HINT*/, &hint);
     }
-    fprintf(stderr, "[OVL] query hint=%d buf=%dx%d\n", hint, cur_sw, cur_sh);
 
-    int target_w = cur_sw;
-    int target_h = cur_sh;
-    int rot = ctx.cur_rot;
-
-    if (hint == 4 || hint == 7) {
-        // Display and buffer are misaligned by 90° — swap to realign
-        target_w = cur_sh;
-        target_h = cur_sw;
-        rot = (hint == 7) ? 3 : 1;  // 4=90CW=rot1, 7=90CCW=rot3
-        ANativeWindow_setBuffersGeometry(ctx.window, target_w, target_h, ctx.egl_fmt);
-        fprintf(stderr, "[OVL] rotate hint=%d buf %dx%d → %dx%d\n",
-                hint, cur_sw, cur_sh, target_w, target_h);
-    } else if (hint == 0) {
-        // Buffer matches display — infer orientation from dims
-        rot = (cur_sw > cur_sh) ? 1 : 0;
-        // Preserve CCW if we were in rot3 and dims are still landscape
-        if (rot == 1 && ctx.cur_rot == 3) rot = 3;
-    } else if (hint == 3) {
-        // ROT_180
-        rot = 2;
-        target_w = cur_sw;
-        target_h = cur_sh;
+    int rot;
+    int lw, lh;  // logical screen dims
+    switch (hint) {
+    case 4: rot = 1; lw = ctx.nat_h; lh = ctx.nat_w; break;  // landscape CW
+    case 7: rot = 3; lw = ctx.nat_h; lh = ctx.nat_w; break;  // landscape CCW
+    case 3: rot = 2; lw = ctx.nat_w; lh = ctx.nat_h; break;  // 180°
+    default: rot = 0; lw = ctx.nat_w; lh = ctx.nat_h; break; // portrait
     }
 
-    if (target_w != ctx.width || target_h != ctx.height || rot != ctx.cur_rot) {
-        ctx.width   = target_w;
-        ctx.height  = target_h;
+    if (lw != ctx.width || lh != ctx.height || rot != ctx.cur_rot) {
+        ctx.width   = lw;
+        ctx.height  = lh;
         ctx.cur_rot = rot;
-        fprintf(stderr, "[OVL] → rot=%d %dx%d\n", rot, target_w, target_h);
+        fprintf(stderr, "[OVL] → rot=%d logical=%dx%d (buf=%dx%d hint=%d)\n",
+                rot, lw, lh, ctx.nat_w, ctx.nat_h, hint);
     }
 }
 
 void overlay_begin_frame(const OverlayContext& ctx) {
-    // Use logical dims — EGL auto-resizes to match display orientation,
-    // so ctx.width/height reflects the actual EGL surface size.
-    glViewport(0, 0, ctx.width, ctx.height);
+    // Viewport = actual buffer dims (nat_w × nat_h, always portrait).
+    // Logical dims (ctx.width/height) may be swapped for landscape but the
+    // GL framebuffer never changes size — SetRotation handles the transform.
+    int bw = ctx.nat_w > 0 ? ctx.nat_w : ctx.width;
+    int bh = ctx.nat_h > 0 ? ctx.nat_h : ctx.height;
+    glViewport(0, 0, bw, bh);
     glClearColor(0.f, 0.f, 0.f, 0.f);
     glClear(GL_COLOR_BUFFER_BIT);
     glEnable(GL_BLEND);
