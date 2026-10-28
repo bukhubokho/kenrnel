@@ -63,8 +63,7 @@ int main() {
         drawBegin();
 
         ui::bar::set_game_alpha(1.0f);
-        ui::bar::render();   // draws toggle bar + updates g_open
-        ui::menu::render();  // always render menu (menu manages own visibility)
+        ui::menu::render();  // bar::render() is called inside menu::render()
 
         if (ui::menu::should_exit()) break;
 
