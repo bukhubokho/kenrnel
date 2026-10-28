@@ -6,3 +6,6 @@ bool ImGui_ImplOpenGL3_Init(const char* glsl_version = "#version 100");
 void ImGui_ImplOpenGL3_Shutdown();
 void ImGui_ImplOpenGL3_NewFrame();
 void ImGui_ImplOpenGL3_RenderDrawData(struct ImDrawData* draw_data);
+// Android overlay: call when device rotation changes to pre-rotate rendering
+// (0=portrait, 1=SF-CCW/home-left, 2=180°, 3=SF-CW/home-right)
+void ImGui_ImplOpenGL3_SetRotation(int rot);

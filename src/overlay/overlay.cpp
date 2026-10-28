@@ -564,17 +564,21 @@ void overlay_query_size(OverlayContext& ctx) {
 
     if (rot != ctx.cur_rot) {
         ctx.cur_rot = rot;
-        int new_w = (rot == 1 || rot == 3) ? ctx.nat_h : ctx.nat_w;
-        int new_h = (rot == 1 || rot == 3) ? ctx.nat_w : ctx.nat_h;
-        ANativeWindow_setBuffersGeometry(ctx.window, new_w, new_h, 1 /*RGBA_8888*/);
-        ctx.width  = new_w;
-        ctx.height = new_h;
-        fprintf(stderr, "[OVL] → rot=%d buf=%dx%d\n", rot, new_w, new_h);
+        // Buffer stays portrait (nat_w × nat_h) always — SF applies its transform
+        // and we counteract it via pre-rotated ImGui projection matrix.
+        // ctx.width/height hold logical (ImGui DisplaySize) dims.
+        ctx.width  = (rot == 1 || rot == 3) ? ctx.nat_h : ctx.nat_w;
+        ctx.height = (rot == 1 || rot == 3) ? ctx.nat_w : ctx.nat_h;
+        fprintf(stderr, "[OVL] → rot=%d logical=%dx%d (buf stays %dx%d)\n",
+                rot, ctx.width, ctx.height, ctx.nat_w, ctx.nat_h);
     }
 }
 
 void overlay_begin_frame(const OverlayContext& ctx) {
-    glViewport(0, 0, ctx.width, ctx.height);
+    // Buffer is always portrait — use nat dims for initial viewport clear
+    int bw = ctx.nat_w > 0 ? ctx.nat_w : ctx.width;
+    int bh = ctx.nat_h > 0 ? ctx.nat_h : ctx.height;
+    glViewport(0, 0, bw, bh);
     glClearColor(0.f, 0.f, 0.f, 0.f);
     glClear(GL_COLOR_BUFFER_BIT);
     glEnable(GL_BLEND);

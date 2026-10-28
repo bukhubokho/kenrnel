@@ -173,6 +173,7 @@ int main() {
             // (must happen after NewFrame — force_center flag defers it correctly)
             if (overlay.cur_rot != prev_rot) {
                 menu.force_center = true;
+                ImGui_ImplOpenGL3_SetRotation(overlay.cur_rot);
             }
         }
 
