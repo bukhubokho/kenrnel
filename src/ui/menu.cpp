@@ -168,59 +168,7 @@ namespace ui::menu {
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // TAB 0 — AIMBOT   (все переменные → Menu::cfg.*)
-    // ════════════════════════════════════════════════════════════════════════
-    static void tab_aimbot() {
-        const ImVec2 cs=half_size();
-
-        if (begin_section("aimbot",cs,true)) {
-            push_bold();
-            ImGui::Checkbox("Enable Aimbot",   &Menu::cfg.aimbot);
-            if (Menu::cfg.aimbot) {
-                combo_vec("Target bone",&Menu::cfg.targetBone,
-                    {"Head","Neck","Chest","Stomach","Pelvis"});
-                combo_vec("Target mode",&Menu::cfg.targetMode,
-                    {"Closest FOV","Low HP","Distance"});
-                ImGui::Checkbox("Visible check",  &Menu::cfg.visibleCheck);
-                ImGui::Checkbox("Hard lock",      &Menu::cfg.hardLock);
-                ImGui::Checkbox("Silent aim",     &Menu::cfg.silentAim);
-                sep();
-                ImGui::SliderInt("FOV (deg)",     &Menu::cfg.fov,        10, 360);
-                ImGui::SliderInt("Smooth",        &Menu::cfg.smooth,      1,  20);
-                ImGui::SliderInt("Max distance",  &Menu::cfg.aimMaxDist, 10, 500);
-                sep();
-                ImGui::Checkbox("Draw FOV circle",&Menu::cfg.drawFov);
-            }
-            pop_bold();
-        }
-        end_section();
-        ImGui::SameLine();
-
-        if (begin_section("triggerbot & weapon",cs,true)) {
-            push_bold();
-            ImGui::Checkbox("Enable Triggerbot",  &Menu::cfg.triggerbot);
-            if (Menu::cfg.triggerbot) {
-                ImGui::Checkbox("Visible only",   &Menu::cfg.tbVisibleCheck);
-                ImGui::Checkbox("Only ADS",       &Menu::cfg.tbOnlyADS);
-                ImGui::Checkbox("Tap fire",       &Menu::cfg.tbTapFire);
-                sep();
-                ImGui::SliderInt("Delay (ms)",    &Menu::cfg.tbDelay,     0, 500);
-                ImGui::SliderInt("Interval (ms)", &Menu::cfg.tbInterval,  50, 1000);
-                ImGui::SliderInt("Fire X %",      &Menu::cfg.tbFireXPct,  50, 100);
-                ImGui::SliderInt("Fire Y %",      &Menu::cfg.tbFireYPct,  50, 100);
-            }
-            sep();
-            ImGui::TextDisabled("Weapon");
-            ImGui::Checkbox("No Recoil",  &Menu::cfg.noRecoil);
-            ImGui::Checkbox("No Spread",  &Menu::cfg.noSpread);
-            ImGui::Checkbox("Rapid Fire", &Menu::cfg.rapidFire);
-            pop_bold();
-        }
-        end_section();
-    }
-
-    // ════════════════════════════════════════════════════════════════════════
-    // TAB 1 — VISUALS
+    // TAB 0 — VISUALS
     // ════════════════════════════════════════════════════════════════════════
     static void tab_visuals() {
         const ImVec2 cs=half_size();
@@ -261,107 +209,7 @@ namespace ui::menu {
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // TAB 2 — WORLD
-    // ════════════════════════════════════════════════════════════════════════
-    static void tab_world() {
-        const ImVec2 cs=half_size();
-
-        if (begin_section("world & render",cs,true)) {
-            push_bold();
-            ImGui::Checkbox("Potato GFX",  &Menu::cfg.potatoGfx);
-            ImGui::Checkbox("Full bright", &Menu::cfg.fullBright);
-            ImGui::Checkbox("Night mode",  &Menu::cfg.nightMode);
-            sep();
-            ImGui::SliderInt("Time of day",&Menu::cfg.timeOfDay, 0, 24);
-            sep();
-            ImGui::TextDisabled("Ambient Light");
-            ImGui::Checkbox("Enable##amb", &Menu::cfg.ambientLight);
-            if (Menu::cfg.ambientLight) {
-                color_ctrl("Ambient color",&Menu::cfg.ambientColor);
-                ImGui::SliderInt("Intensity",    &Menu::cfg.ambientIntensity, 0, 85);
-                ImGui::Checkbox("Pulse",         &Menu::cfg.ambientPulse);
-                if (Menu::cfg.ambientPulse)
-                    ImGui::SliderInt("Pulse speed",&Menu::cfg.ambientSpeed, 5, 50);
-            }
-            pop_bold();
-        }
-        end_section();
-        ImGui::SameLine();
-
-        if (begin_section("bullet tracers",cs,true)) {
-            push_bold();
-            ImGui::Checkbox("Enable##tr",    &Menu::cfg.tracerEnabled);
-            if (Menu::cfg.tracerEnabled) {
-                combo_vec("Mode",&Menu::cfg.tracerMode,{"2D","3D"});
-                ImGui::SliderInt("Thickness", &Menu::cfg.tracerThickness, 5, 40);
-                ImGui::SliderInt("Lifetime",  &Menu::cfg.tracerLifetime,  3, 30);
-                ImGui::Checkbox("Spark",      &Menu::cfg.tracerSpark);
-                ImGui::Checkbox("Fade",       &Menu::cfg.tracerFade);
-            }
-            pop_bold();
-        }
-        end_section();
-    }
-
-    // ════════════════════════════════════════════════════════════════════════
-    // TAB 3 — RADAR & MISC
-    // ════════════════════════════════════════════════════════════════════════
-    static void tab_radar_misc() {
-        const ImVec2 cs=half_size();
-
-        if (begin_section("mini radar",cs,true)) {
-            push_bold();
-            ImGui::Checkbox("Enable radar",  &Menu::cfg.miniRadar);
-            ImGui::BeginDisabled(!Menu::cfg.miniRadar);
-            combo_vec("Style",&Menu::cfg.radarStyle,{"Round","Square"});
-            ImGui::SliderInt("Size",          &Menu::cfg.radarSize,  80, 300);
-            ImGui::SliderInt("Range",         &Menu::cfg.radarRange, 20, 200);
-            ImGui::Checkbox("Color by dist",  &Menu::cfg.radarShowDist);
-            ImGui::EndDisabled();
-            pop_bold();
-        }
-        end_section();
-        ImGui::SameLine();
-
-        if (begin_section("misc",cs,true)) {
-            push_bold();
-            ImGui::TextDisabled("Overlay");
-            ImGui::Checkbox("Watermark",    &Menu::cfg.watermark);
-            ImGui::Checkbox("FPS counter",  &Menu::cfg.fpsCounter);
-            ImGui::Checkbox("Stream proof", &Menu::cfg.streamproof);
-            combo_vec("FPS limit",&Menu::cfg.fpsLimit,{"30","60","90","120","144"});
-            sep();
-            ImGui::TextDisabled("Crosshair");
-            ImGui::Checkbox("Enable##ch",   &Menu::cfg.crosshair);
-            if (Menu::cfg.crosshair) {
-                combo_vec("Style##ch",&Menu::cfg.crosshairStyle,
-                    {"Cross","Dot","Circle","Cross+Circle"});
-                ImGui::SliderInt("Size##ch",  &Menu::cfg.crosshairSize,  2, 30);
-                ImGui::SliderInt("Gap##ch",   &Menu::cfg.crosshairGap,   0, 20);
-                ImGui::SliderInt("Thick##ch", &Menu::cfg.crosshairThick, 5, 40);
-            }
-            sep();
-            ImGui::TextDisabled("Hit marker");
-            ImGui::Checkbox("Enable##hm",   &Menu::cfg.hitMarker);
-            if (Menu::cfg.hitMarker)
-                ImGui::SliderInt("HM size",  &Menu::cfg.hitMarkerSize, 4, 30);
-            sep();
-            ImGui::TextDisabled("Rain");
-            ImGui::Checkbox("Enable##rain", &Menu::cfg.rain);
-            if (Menu::cfg.rain)
-                ImGui::SliderInt("Opacity",  &Menu::cfg.rainOpacity, 10, 100);
-            sep();
-            ImGui::TextDisabled("Speedhack");
-            ImGui::Checkbox("Enable##spd",  &Menu::cfg.speedhack);
-            if (Menu::cfg.speedhack)
-                ImGui::SliderInt("Multiplier",&Menu::cfg.speedMult, 10, 30);
-            pop_bold();
-        }
-        end_section();
-    }
-
-    // ════════════════════════════════════════════════════════════════════════
-    // TAB 4 — SETTINGS
+    // TAB 1 — SETTINGS
     // ════════════════════════════════════════════════════════════════════════
     static void tab_settings() {
         const ImVec2 cs=half_size();
@@ -424,31 +272,28 @@ namespace ui::menu {
     // ════════════════════════════════════════════════════════════════════════
     static void render_tab() {
         switch(g_tab){
-            case 0: tab_aimbot();     break;
-            case 1: tab_visuals();    break;
-            case 2: tab_world();      break;
-            case 3: tab_radar_misc(); break;
-            case 4: tab_settings();   break;
-            default: tab_visuals();   break;
+            case 0: tab_visuals();  break;
+            case 1: tab_settings(); break;
+            default: tab_visuals(); break;
         }
     }
 
     static void render_tab_bar() {
-        const char* names[5]={"aimbot","visuals","world","radar & misc","settings"};
+        const char* names[2]={"visuals","settings"};
         const ImGuiStyle& st=ImGui::GetStyle();
         if (!begin_section("  ",
             ImVec2(ImGui::GetWindowSize().x-st.WindowPadding.x*2.f,TABS_HEIGHT)))
             return;
         push_bold();
-        for(int i=0;i<5;++i){
+        for(int i=0;i<2;++i){
             char id[32]; std::snprintf(id,sizeof(id),"%s##t%d",names[i],i);
             ImGui::PushStyleColor(ImGuiCol_Text,
                 g_tab==i?IM_COL32(255,255,255,255):IM_COL32(150,150,150,255));
             ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign,ImVec2(.5f,.5f));
-            float tw=(ImGui::GetWindowSize().x/5.f)-(st.FramePadding.x+st.WindowPadding.x);
+            float tw=(ImGui::GetWindowSize().x/2.f)-(st.FramePadding.x+st.WindowPadding.x);
             if(ImGui::Selectable(id,g_tab==i,0,ImVec2(tw,0.f))) g_tab=i;
             ImGui::PopStyleVar(); ImGui::PopStyleColor();
-            if(i!=4) ImGui::SameLine();
+            if(i!=1) ImGui::SameLine();
         }
         pop_bold();
         end_section();
