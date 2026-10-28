@@ -239,12 +239,10 @@ bool menu_draw(MenuState& menu, ESPConfig& esp_cfg,
     float WW = std::min(sw * 0.88f, 1400.f);
     float WH = std::min(sh * 0.82f,  850.f);
 
-    // Reposition on rotation or first show
+    // Reposition on rotation or first show — no clamping so menu can go anywhere
     if (menu.force_center) {
         float cx = (sw - WW) * 0.5f;
         float cy = (sh - WH) * 0.5f;
-        if (cx < 0.f) cx = 0.f;
-        if (cy < 0.f) cy = 0.f;
         fprintf(stderr, "[MENU] center: vis=%.0fx%.0f wnd=%.0fx%.0f → pos=%.0f,%.0f\n",
                 sw, sh, WW, WH, cx, cy);
         ImGui::SetNextWindowPos({cx, cy}, ImGuiCond_Always);
@@ -257,10 +255,6 @@ bool menu_draw(MenuState& menu, ESPConfig& esp_cfg,
     const float dt = ImClamp(io.DeltaTime * 10.f, 0.f, 1.f);
     s_alpha += (1.f - s_alpha) * dt;
     ImGui::GetStyle().Alpha = s_alpha;
-
-    // Dim background
-    ImGui::GetBackgroundDrawList()->AddRectFilled(
-        {0.f,0.f},{sw,sh}, IM_COL32(0,0,0,(int)(110*s_alpha)));
 
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, s_alpha);
     bool open = true;
