@@ -17,18 +17,6 @@ namespace ui::bar {
         ImGuiIO& io = ImGui::GetIO();
         static float prog = 0.f;
 
-        float sc = g_sw / 1920.f;
-        float bw = 350.f * sc;
-        float bh = 10.f;
-
-        ImRect r(
-            ImVec2((g_sw * 0.5f) - (bw * 0.5f), g_sh - bh - 10.f),
-            ImVec2((g_sw * 0.5f) + (bw * 0.5f), g_sh - 10.f)
-        );
-
-        ImVec2 wp(r.Min.x - 30.f * sc, r.Min.y - 50.f * sc);
-        ImVec2 ws(bw + 60.f * sc, bh + 100.f * sc);
-
         // g_open is now controlled externally (volume key double-press)
         // Animate prog toward the target set by g_open
         float tgt = g_open ? 1.f : 0.f;
@@ -39,10 +27,5 @@ namespace ui::bar {
 
         g_alpha = ease(prog);
 
-        ImDrawList* dl = ImGui::GetForegroundDrawList();
-        int ba = static_cast<int>(64 * g_game_alpha);
-        if (ba > 0) {
-            dl->AddRectFilled(r.Min, r.Max, IM_COL32(255, 255, 255, ba), 20.f);
-        }
     }
 }
