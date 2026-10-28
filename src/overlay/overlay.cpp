@@ -454,6 +454,17 @@ bool overlay_init_egl(OverlayContext& ctx) {
     eglChooseConfig(ctx.display, attribs, &cfg, 1, &ncfg);
     if (!ncfg) { LOGE("eglChooseConfig failed"); return false; }
 
+    // Get native pixel format from EGL config, then tell ANativeWindow to
+    // auto-resize to SF's preferred dims (w=0,h=0).  Without this call
+    // ANativeWindow is locked to its creation size forever and never signals
+    // EGL to resize when the display orientation changes.
+    {
+        EGLint fmt = 1; // RGBA_8888 fallback
+        eglGetConfigAttrib(ctx.display, cfg, EGL_NATIVE_VISUAL_ID, &fmt);
+        ANativeWindow_setBuffersGeometry(ctx.window, 0, 0, fmt);
+        fprintf(stderr, "[OVL] setBuffersGeometry(0,0,%d)\n", fmt);
+    }
+
     ctx.surface = eglCreateWindowSurface(ctx.display, cfg, ctx.window, nullptr);
     if (ctx.surface == EGL_NO_SURFACE) {
         LOGE("eglCreateWindowSurface: 0x%x", eglGetError());
