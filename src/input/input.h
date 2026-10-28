@@ -186,13 +186,15 @@ static void input_pump_imgui(InputState& st) {
     for (auto& te : events) {
         float nx = te.x, ny = te.y;
         switch (rot) {
-        case 1:
-            sx = ny * sw;
-            sy = (1.0f - nx) * sh;
-            break;
-        case 3:
+        case 1:  // home button left — device rotated 90° CW
+            // physical top (ny=0) → display RIGHT, physical left (nx=0) → display TOP
             sx = (1.0f - ny) * sw;
             sy = nx * sh;
+            break;
+        case 3:  // home button right — device rotated 90° CCW
+            // physical top (ny=0) → display LEFT, physical left (nx=0) → display BOTTOM
+            sx = ny * sw;
+            sy = (1.0f - nx) * sh;
             break;
         case 2:
             sx = (1.0f - nx) * sw;
@@ -209,6 +211,8 @@ static void input_pump_imgui(InputState& st) {
     io.AddMousePosEvent(sx, sy);
     if (cur_down != s_last_down) {
         io.AddMouseButtonEvent(0, cur_down);
+        fprintf(stderr, "[TOUCH] rot=%d down=%d → sx=%.0f sy=%.0f (screen %dx%d)\n",
+                rot, (int)cur_down, sx, sy, sw, sh);
         s_last_down = cur_down;
     }
 }

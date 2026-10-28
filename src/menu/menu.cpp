@@ -72,7 +72,10 @@ bool menu_draw(MenuState& menu, ESPConfig& esp_cfg,
     // Must be called AFTER ImGui::NewFrame() — NewFrame clears NextWindowData,
     // so any SetNextWindowPos from before NewFrame is lost.
     if (menu.force_center) {
-        ImGui::SetNextWindowPos({(sw - mw) * 0.5f, (sh - mh) * 0.5f}, ImGuiCond_Always);
+        float cx = (sw - mw) * 0.5f, cy = (sh - mh) * 0.5f;
+        fprintf(stderr, "[MENU] force_center: disp=%.0fx%.0f mw=%.0f mh=%.0f → pos=%.0f,%.0f\n",
+                sw, sh, mw, mh, cx, cy);
+        ImGui::SetNextWindowPos({cx, cy}, ImGuiCond_Always);
         menu.force_center = false;
     }
 
