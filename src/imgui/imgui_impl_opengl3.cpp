@@ -215,8 +215,15 @@
 #define GL_CALL(_CALL)      _CALL   // Call without error check
 #endif
 
-void ImGui_ImplOpenGL3_SetRotation(int /*rot*/) {
-    // No-op: EGL auto-resizes to landscape, no buffer pre-rotation needed.
+// Pre-rotation state: buffer stays portrait, we rotate the projection instead.
+static int g_rot    = 0;
+static int g_nat_w  = 0;   // portrait buffer width
+static int g_nat_h  = 0;   // portrait buffer height
+
+void ImGui_ImplOpenGL3_SetRotation(int rot, int nat_w, int nat_h) {
+    g_rot   = rot;
+    if (nat_w > 0) g_nat_w = nat_w;
+    if (nat_h > 0) g_nat_h = nat_h;
 }
 
 // Forward declarations (defined later in this file)
@@ -448,12 +455,33 @@ static void ImGui_ImplOpenGL3_SetupRenderState(ImDrawData* draw_data, int fb_wid
     }
 #endif
 
-    // Setup viewport + standard orthographic projection.
-    // EGL auto-resizes to match display orientation, so fb_width/fb_height
-    // already reflect the actual surface dims (landscape when rotated).
-    GL_CALL(glViewport(0, 0, (GLsizei)fb_width, (GLsizei)fb_height));
+    // When pre-rotating for portrait buffer, viewport = buffer dims, not logical dims.
+    if (g_rot != 0 && g_nat_w > 0 && g_nat_h > 0) {
+        GL_CALL(glViewport(0, 0, (GLsizei)g_nat_w, (GLsizei)g_nat_h));
+    } else {
+        GL_CALL(glViewport(0, 0, (GLsizei)fb_width, (GLsizei)fb_height));
+    }
     float ortho_projection[4][4];
-    {
+    if (g_rot == 1 && g_nat_w > 0 && g_nat_h > 0) {
+        // 90° CW: ImGui landscape (0..nat_h, 0..nat_w) → portrait buffer NDC
+        // ImGui x maps to buffer y-axis; ImGui y maps to buffer x-axis.
+        const float p[4][4] = {
+            { 0.0f,              2.0f/g_nat_w,  0.0f, 0.0f },
+            { 2.0f/g_nat_h,      0.0f,          0.0f, 0.0f },
+            { 0.0f,              0.0f,          -1.0f, 0.0f },
+            { -1.0f,            -1.0f,           0.0f, 1.0f },
+        };
+        memcpy(ortho_projection, p, sizeof(p));
+    } else if (g_rot == 3 && g_nat_w > 0 && g_nat_h > 0) {
+        // 90° CCW: mirror of rot=1
+        const float p[4][4] = {
+            { 0.0f,             -2.0f/g_nat_w,  0.0f, 0.0f },
+            { -2.0f/g_nat_h,    0.0f,           0.0f, 0.0f },
+            { 0.0f,              0.0f,          -1.0f, 0.0f },
+            { 1.0f,              1.0f,           0.0f, 1.0f },
+        };
+        memcpy(ortho_projection, p, sizeof(p));
+    } else {
         float L = draw_data->DisplayPos.x;
         float R = draw_data->DisplayPos.x + draw_data->DisplaySize.x;
         float T = draw_data->DisplayPos.y;
@@ -615,12 +643,26 @@ void    ImGui_ImplOpenGL3_RenderDrawData(ImDrawData* draw_data)
                 if (clip_max.x <= clip_min.x || clip_max.y <= clip_min.y)
                     continue;
 
-                // Standard scissor (GL y=0 at bottom, ImGui y=0 at top)
+                // Scissor — transform for pre-rotation when needed
                 {
-                    int sx  = (int)clip_min.x;
-                    int sy  = (int)((float)fb_height - clip_max.y);
-                    int sw2 = (int)(clip_max.x - clip_min.x);
-                    int sh2 = (int)(clip_max.y - clip_min.y);
+                    int sx, sy, sw2, sh2;
+                    if (g_rot == 1 && g_nat_w > 0 && g_nat_h > 0) {
+                        // ImGui x→buffer y (GL y-up), ImGui y→buffer x
+                        sx  = (int)clip_min.y;
+                        sy  = (int)((float)g_nat_h - clip_max.x);
+                        sw2 = (int)(clip_max.y - clip_min.y);
+                        sh2 = (int)(clip_max.x - clip_min.x);
+                    } else if (g_rot == 3 && g_nat_w > 0 && g_nat_h > 0) {
+                        sx  = (int)((float)g_nat_w - clip_max.y);
+                        sy  = (int)clip_min.x;
+                        sw2 = (int)(clip_max.y - clip_min.y);
+                        sh2 = (int)(clip_max.x - clip_min.x);
+                    } else {
+                        sx  = (int)clip_min.x;
+                        sy  = (int)((float)fb_height - clip_max.y);
+                        sw2 = (int)(clip_max.x - clip_min.x);
+                        sh2 = (int)(clip_max.y - clip_min.y);
+                    }
                     if (sx < 0) sx = 0;
                     if (sy < 0) sy = 0;
                     GL_CALL(glScissor(sx, sy, sw2, sh2));

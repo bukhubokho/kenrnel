@@ -117,7 +117,9 @@ int main() {
     ImGui::CreateContext();
     fprintf(stderr, "[KERNEL] ImGui context OK\n");
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = {(float)overlay.width, (float)overlay.height};
+    // Always set DisplaySize to portrait buffer dims — RenderDrawData uses this directly
+    // for glViewport and projection. Logical (landscape) dims go to menu.vis_w/h only.
+    io.DisplaySize = {(float)overlay.nat_w, (float)overlay.nat_h};
     io.IniFilename = nullptr;
     // Scale font based on portrait width (shorter dimension) — 1080 is reference.
     // Using height causes 3.5x scale on tall screens, making the menu wider than display.
@@ -132,6 +134,7 @@ int main() {
     ImGui_ImplAndroid_Init(overlay.window);
     fprintf(stderr, "[KERNEL] ImGui_ImplOpenGL3_Init...\n");
     ImGui_ImplOpenGL3_Init("#version 100");
+    ImGui_ImplOpenGL3_SetRotation(overlay.cur_rot, overlay.nat_w, overlay.nat_h);
     fprintf(stderr, "[KERNEL] ImGui backends OK\n");
 
     MenuState    menu{};
@@ -161,19 +164,21 @@ int main() {
             menu.visible = !menu.visible;
         }
 
-        // Update overlay size + handle rotation (resizes ANativeWindow buffer)
+        // Update overlay size + handle rotation
         {
             int prev_rot = overlay.cur_rot;
             overlay_query_size(overlay);
             input.screen_w.store(overlay.width);
             input.screen_h.store(overlay.height);
             input.rotation.store(overlay.cur_rot);
-            io.DisplaySize = {(float)overlay.width, (float)overlay.height};
+            // DisplaySize stays portrait (buffer dims) — rotation handled in projection
+            io.DisplaySize = {(float)overlay.nat_w, (float)overlay.nat_h};
+            // vis_w/h = logical dims (landscape when rotated) — used by menu layout
             menu.vis_w = (float)overlay.width;
             menu.vis_h = (float)overlay.height;
             if (overlay.cur_rot != prev_rot) {
                 menu.force_center = true;
-                ImGui_ImplOpenGL3_SetRotation(overlay.cur_rot);
+                ImGui_ImplOpenGL3_SetRotation(overlay.cur_rot, overlay.nat_w, overlay.nat_h);
             }
         }
 
@@ -198,8 +203,8 @@ int main() {
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplAndroid_NewFrame();
-        // Restore correct DisplaySize — ImGui_ImplAndroid_NewFrame may overwrite it
-        io.DisplaySize = {(float)overlay.width, (float)overlay.height};
+        // Restore portrait DisplaySize — ImGui_ImplAndroid_NewFrame may overwrite it
+        io.DisplaySize = {(float)overlay.nat_w, (float)overlay.nat_h};
         input_pump_imgui(input);  // forward /dev/input touch events to ImGui
         ImGui::NewFrame();
 
