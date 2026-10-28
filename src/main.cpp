@@ -193,6 +193,11 @@ int main() {
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplAndroid_NewFrame();
+        // ImGui_ImplAndroid_NewFrame() overwrites io.DisplaySize with
+        // ANativeWindow_getWidth/Height — which returns the buffer size and can
+        // lag behind or return portrait dims after setBuffersGeometry.
+        // Force it to the correct dims we computed in overlay_query_size.
+        io.DisplaySize = {(float)overlay.width, (float)overlay.height};
         input_pump_imgui(input);  // forward /dev/input touch events to ImGui
         ImGui::NewFrame();
 
