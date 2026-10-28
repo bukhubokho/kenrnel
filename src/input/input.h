@@ -6,213 +6,208 @@
 #include <sys/ioctl.h>
 #include <cstring>
 #include <cstdio>
+#include <cmath>
 #include <string>
 #include <vector>
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <chrono>
 
 #define KEY_VOLUMEDOWN  114
 #define KEY_VOLUMEUP    115
 
-struct TouchEvent {
-    float x, y;
-    bool  down;   // true = finger down, false = finger up
-    bool  valid;
-};
+// ── Wolsaw-style touch input ──────────────────────────────────────────────────
+// One thread per /dev/input/event* that has ABS_MT_POSITION_X.
+// Writes directly to ImGuiIO::MousePos / MouseDown per rotation.
+
+#define TOUCH_MODE 2   // ABS_MT_TRACKING_ID-based (Wolsaw default)
 
 struct InputState {
-    std::atomic<bool>  double_press{false};
-    std::atomic<bool>  running{true};
-    std::thread        reader;
-
-    // Touch state — written by reader, read by main thread each frame
-    std::mutex         touch_mtx;
-    std::vector<TouchEvent> touch_queue;
+    std::atomic<bool> double_press{false};
+    std::atomic<bool> running{true};
+    std::vector<std::thread> readers;
 
     // double-press tracking
-    int64_t            last_vol_ms{0};
+    std::mutex   vol_mtx;
+    int64_t      last_vol_ms{0};
     static constexpr int DOUBLE_MS = 400;
 
-    // portrait (natural) dims — set once at init, never changed
-    int portrait_w{1080};
-    int portrait_h{2400};
-
-    // current screen dims — updated each frame from EGL surface size
-    std::atomic<int>   screen_w{1080};
-    std::atomic<int>   screen_h{2400};
-
-    // rotation: 0=portrait, 1=90°CW, 2=180°, 3=90°CCW
-    std::atomic<int>   rotation{0};
+    // current screen dims + rotation — updated each frame from overlay
+    std::atomic<int> screen_w{1080};
+    std::atomic<int> screen_h{2400};
+    std::atomic<int> rotation{0};    // 0=portrait,1=90CW,2=180,3=90CCW
 };
 
-static std::vector<std::string> find_input_devices() {
-    std::vector<std::string> devs;
-    DIR* d = opendir("/dev/input");
-    if (!d) return devs;
-    struct dirent* ent;
-    while ((ent = readdir(d)))
-        if (strncmp(ent->d_name, "event", 5) == 0)
-            devs.push_back(std::string("/dev/input/") + ent->d_name);
-    closedir(d);
-    return devs;
-}
+// Per-device structure (mirrors touch::input from Wolsaw)
+struct DevInput {
+    int fd{-1};
+    bool canBeUsed{false};
+    struct input_absinfo absX{}, absY{};
+    float absXMultiplier{0.f}, absYMultiplier{0.f};
+#if TOUCH_MODE == 2
+    bool trackingIDPresent{false};
+#endif
 
-// Per-device touch tracking
-struct DevTouch {
-    int   fd;
-    int   abs_x_min, abs_x_max;
-    int   abs_y_min, abs_y_max;
-    int   cur_x{0}, cur_y{0};
-    bool  touching{false};
-    bool  is_touch_dev{false};
+    bool open_dev(const char* path, int32_t sw, int32_t sh) {
+        fd = ::open(path, O_RDWR);
+        if (fd == -1) return false;
+        canBeUsed = ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &absX) != -1
+                 && ioctl(fd, EVIOCGABS(ABS_MT_POSITION_Y), &absY) != -1
+                 && absX.maximum > 0 && absY.maximum > 0;
+        if (!canBeUsed) { close_dev(); return false; }
+#if TOUCH_MODE == 2
+        struct input_absinfo absT{};
+        trackingIDPresent = ioctl(fd, EVIOCGABS(ABS_MT_TRACKING_ID), &absT) != -1
+                         && absT.minimum <= 0 && absT.maximum > 0;
+#endif
+        calc_multipliers(sw, sh);
+        return true;
+    }
+
+    void close_dev() {
+        if (fd != -1) { ::close(fd); fd = -1; }
+    }
+
+    void calc_multipliers(int32_t sw, int32_t sh) {
+        float mx = fmaxf((float)absX.maximum, (float)absY.maximum);
+        float mn = fminf((float)absX.maximum, (float)absY.maximum);
+        absXMultiplier = (float)sw / (sw > sh ? mx : mn);
+        absYMultiplier = (float)sh / (sw > sh ? mn : mx);
+    }
 };
 
-static void input_reader_thread(InputState* st) {
-    auto devs = find_input_devices();
-    std::vector<DevTouch> touch_devs;
+// ── Imported from imgui at pump time ──────────────────────────────────────────
+#include "../imgui/imgui.h"
+
+static void touch_thread(DevInput dev, InputState* st) {
+    ::sleep(1);
+
+    struct input_event events[64]{};
+    static bool isDown = false;
+    static float x = 0.f, y = 0.f;
 
     auto now_ms = []() -> int64_t {
         return std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
     };
 
-    for (auto& p : devs) {
-        int fd = open(p.c_str(), O_RDONLY | O_NONBLOCK);
-        if (fd < 0) continue;
+    while (dev.fd > 0 && st->running.load()) {
+        ssize_t n = read(dev.fd, events, sizeof(events));
+        if (n <= 0) { ::usleep(4000); continue; }
+        int cnt = (int)(n / sizeof(struct input_event));
 
-        DevTouch dt; dt.fd = fd;
-        // Check if device has ABS_MT_POSITION_X — touchscreen
-        struct input_absinfo ai{};
-        if (ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &ai) == 0) {
-            dt.abs_x_min = ai.minimum; dt.abs_x_max = ai.maximum;
-            ioctl(fd, EVIOCGABS(ABS_MT_POSITION_Y), &ai);
-            dt.abs_y_min = ai.minimum; dt.abs_y_max = ai.maximum;
-            dt.is_touch_dev = (dt.abs_x_max > dt.abs_x_min);
-        }
-        touch_devs.push_back(dt);
-    }
-    fprintf(stderr, "[INPUT] opened %zu devices\n", touch_devs.size());
+        for (int j = 0; j < cnt; ++j) {
+            auto& ev = events[j];
 
-    while (st->running.load()) {
-        // rotation is updated by main loop from overlay_query_size — no polling needed here
+            // Volume double-press
+            if (ev.type == EV_KEY && ev.value == 1 &&
+                (ev.code == KEY_VOLUMEDOWN || ev.code == KEY_VOLUMEUP)) {
+                std::lock_guard<std::mutex> lk(st->vol_mtx);
+                int64_t now  = now_ms();
+                int64_t diff = now - st->last_vol_ms;
+                if (diff > 0 && diff < st->DOUBLE_MS) {
+                    st->double_press.store(true);
+                    st->last_vol_ms = 0;
+                } else {
+                    st->last_vol_ms = now;
+                }
+            }
 
-        for (auto& dt : touch_devs) {
-            struct input_event ev;
-            while (read(dt.fd, &ev, sizeof(ev)) == sizeof(ev)) {
-                // Volume double-press
-                if (ev.type == EV_KEY && ev.value == 1 &&
-                    (ev.code == KEY_VOLUMEDOWN || ev.code == KEY_VOLUMEUP)) {
-                    int64_t now = now_ms();
-                    int64_t diff = now - st->last_vol_ms;
-                    if (diff > 0 && diff < st->DOUBLE_MS) {
-                        st->double_press.store(true);
-                        st->last_vol_ms = 0;
-                    } else {
-                        st->last_vol_ms = now;
+            if (!dev.canBeUsed) continue;
+
+            if (ev.type == EV_ABS) {
+#if TOUCH_MODE == 2
+                if (dev.trackingIDPresent && ev.code == ABS_MT_TRACKING_ID) {
+                    isDown = ev.value != -1; continue;
+                }
+#elif TOUCH_MODE == 0
+                if (ev.code == ABS_MT_TRACKING_ID) {
+                    isDown = ev.value != -1; continue;
+                }
+#endif
+                if (ev.code == ABS_MT_POSITION_X) { x = (float)ev.value; continue; }
+                if (ev.code == ABS_MT_POSITION_Y) { y = (float)ev.value; continue; }
+            }
+
+            if (ev.code == SYN_REPORT) {
+                ImGuiIO* io = &ImGui::GetIO();
+#if TOUCH_MODE == 2
+                io->MouseDown[0] = dev.trackingIDPresent ? isDown : cnt > 2;
+#elif TOUCH_MODE == 0
+                io->MouseDown[0] = isDown;
+#else
+                io->MouseDown[0] = cnt > 2;
+#endif
+                if (io->MouseDown[0]) {
+                    int rot = st->rotation.load();
+                    int sw  = st->screen_w.load();
+                    int sh  = st->screen_h.load();
+                    // Recalculate multipliers for current screen size
+                    float mx = fmaxf((float)dev.absX.maximum, (float)dev.absY.maximum);
+                    float mn = fminf((float)dev.absX.maximum, (float)dev.absY.maximum);
+                    float xm = (float)sw / (sw > sh ? mx : mn);
+                    float ym = (float)sh / (sw > sh ? mn : mx);
+
+                    float px, py;
+                    switch (rot) {
+                    case 1:   // 90° CW (home left)
+                        px = y;
+                        py = dev.absX.maximum - x;
+                        break;
+                    case 2:   // 180°
+                        px = dev.absX.maximum - x;
+                        py = dev.absY.maximum - y;
+                        break;
+                    case 3:   // 90° CCW (home right)
+                        px = dev.absY.maximum - y;
+                        py = x;
+                        break;
+                    default:  // portrait
+                        px = x;
+                        py = y;
+                        break;
                     }
-                }
-
-                // Touch events
-                if (!dt.is_touch_dev) continue;
-                if (ev.type == EV_ABS) {
-                    if (ev.code == ABS_MT_POSITION_X || ev.code == ABS_X)
-                        dt.cur_x = ev.value;
-                    if (ev.code == ABS_MT_POSITION_Y || ev.code == ABS_Y)
-                        dt.cur_y = ev.value;
-                }
-                if (ev.type == EV_KEY && ev.code == BTN_TOUCH) {
-                    dt.touching = (ev.value == 1);
-                }
-                if (ev.type == EV_SYN && ev.code == SYN_REPORT) {
-                    if (dt.abs_x_max <= dt.abs_x_min) continue;
-                    // Store normalized portrait coords (0..1) — pump remaps per rotation
-                    float nx = (float)(dt.cur_x - dt.abs_x_min) / (dt.abs_x_max - dt.abs_x_min);
-                    float ny = (float)(dt.cur_y - dt.abs_y_min) / (dt.abs_y_max - dt.abs_y_min);
-                    TouchEvent te{};
-                    te.x     = nx;  // normalized, not pixels
-                    te.y     = ny;
-                    te.down  = dt.touching;
-                    te.valid = true;
-                    std::lock_guard<std::mutex> lk(st->touch_mtx);
-                    st->touch_queue.push_back(te);
+                    io->MousePos.x = px * xm;
+                    io->MousePos.y = py * ym;
                 }
             }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(8));
     }
-
-    for (auto& dt : touch_devs) close(dt.fd);
+    dev.close_dev();
 }
 
 static void input_init(InputState& st) {
-    // portrait dims set by caller before init; copy as baseline for rotation fallback
-    st.portrait_w = st.screen_w.load();
-    st.portrait_h = st.screen_h.load();
-    st.reader = std::thread(input_reader_thread, &st);
+    int sw = st.screen_w.load();
+    int sh = st.screen_h.load();
+
+    DIR* d = opendir("/dev/input");
+    if (!d) return;
+    struct dirent* ent;
+    while ((ent = readdir(d))) {
+        if (strncmp(ent->d_name, "event", 5) != 0) continue;
+        char path[128];
+        snprintf(path, sizeof(path), "/dev/input/%s", ent->d_name);
+        DevInput dev{};
+        if (dev.open_dev(path, sw, sh)) {
+            st.readers.emplace_back(touch_thread, dev, &st);
+            fprintf(stderr, "[INPUT] %s ok (touch=%d)\n", path, dev.canBeUsed);
+        }
+    }
+    closedir(d);
+    fprintf(stderr, "[INPUT] %zu reader threads started\n", st.readers.size());
 }
 
 static void input_destroy(InputState& st) {
     st.running.store(false);
-    if (st.reader.joinable()) st.reader.join();
+    for (auto& t : st.readers) if (t.joinable()) t.join();
+    st.readers.clear();
 }
 
 static bool input_consume_double_press(InputState& st) {
     return st.double_press.exchange(false);
 }
 
-// Call each frame — drains touch queue into ImGui, remaps for current rotation.
-// Only the last position per frame is forwarded; button events fire only on state change.
-#include "../imgui/imgui.h"
-static void input_pump_imgui(InputState& st) {
-    std::vector<TouchEvent> events;
-    {
-        std::lock_guard<std::mutex> lk(st.touch_mtx);
-        events.swap(st.touch_queue);
-    }
-    if (events.empty()) return;
-
-    ImGuiIO& io = ImGui::GetIO();
-    int sw  = st.screen_w.load();
-    int sh  = st.screen_h.load();
-    int rot = st.rotation.load();
-
-    static bool s_last_down = false;
-
-    // Collect last position and final button state from this batch
-    float sx = 0.f, sy = 0.f;
-    bool  cur_down = s_last_down;
-
-    for (auto& te : events) {
-        float nx = te.x, ny = te.y;
-        switch (rot) {
-        case 1:  // home button left — device rotated 90° CW
-            // physical top (ny=0) → display RIGHT, physical left (nx=0) → display TOP
-            sx = (1.0f - ny) * sw;
-            sy = nx * sh;
-            break;
-        case 3:  // home button right — device rotated 90° CCW
-            // physical top (ny=0) → display LEFT, physical left (nx=0) → display BOTTOM
-            sx = ny * sw;
-            sy = (1.0f - nx) * sh;
-            break;
-        case 2:
-            sx = (1.0f - nx) * sw;
-            sy = (1.0f - ny) * sh;
-            break;
-        default:
-            sx = nx * sw;
-            sy = ny * sh;
-            break;
-        }
-        cur_down = te.down;
-    }
-
-    io.AddMousePosEvent(sx, sy);
-    if (cur_down != s_last_down) {
-        io.AddMouseButtonEvent(0, cur_down);
-        fprintf(stderr, "[TOUCH] rot=%d down=%d → sx=%.0f sy=%.0f (screen %dx%d)\n",
-                rot, (int)cur_down, sx, sy, sw, sh);
-        s_last_down = cur_down;
-    }
-}
+// Touch is now written directly to ImGuiIO by touch_thread.
+// This is kept for API compatibility — main loop still calls it.
+static void input_pump_imgui(InputState& /*st*/) {}
