@@ -555,10 +555,11 @@ void overlay_query_size(OverlayContext& ctx) {
     // hint reflects the display's rotation state directly.
     // It does NOT reset after setBuffersGeometry on this device —
     // it stays at its value as long as the display is in that orientation.
-    // Direct mapping: hint=0→portrait, hint=4→home-right, hint=7→home-left.
+    // hint=4 (HAL_ROT_90): SF applies 90°CCW to portrait buffer → device rotated 90°CW, home on left
+    // hint=7 (HAL_ROT_270): SF applies 90°CW to portrait buffer → device rotated 90°CCW, home on right
     int rot;
-    if      (hint == 4) rot = 3;   // display rotated CCW → home on right
-    else if (hint == 7) rot = 1;   // display rotated CW  → home on left
+    if      (hint == 4) rot = 1;   // SF CCW → device CW → home on left
+    else if (hint == 7) rot = 3;   // SF CW  → device CCW → home on right
     else if (hint == 3) rot = 2;   // 180°
     else                rot = 0;   // portrait
 
