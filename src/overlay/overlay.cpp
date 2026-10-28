@@ -540,38 +540,49 @@ static int get_display_orientation(ANativeWindow* win) {
 
 void overlay_query_size(OverlayContext& ctx) {
     if (!ctx.window || ctx.nat_w == 0 || ctx.nat_h == 0) return;
+    if (ctx.surface == EGL_NO_SURFACE || ctx.display == EGL_NO_DISPLAY) return;
 
-    // Use DEFAULT_WIDTH/HEIGHT queries (6/7) — these reflect the display's current
-    // orientation as set by SF, independent of our buffer size.
-    // TRANSFORM_HINT (8) becomes ambiguous after we resize the buffer, so we only
-    // use it to distinguish 90°CW vs 90°CCW once we know we're in landscape.
-    int orient = get_display_orientation(ctx.window);  // 0=portrait, 1=landscape, -1=unknown
-    if (orient < 0) orient = (ctx.cur_rot != 0) ? 1 : 0;  // keep last known if query fails
+    // Read current buffer dims from EGL
+    int cur_sw = 0, cur_sh = 0;
+    eglQuerySurface(ctx.display, ctx.surface, EGL_WIDTH,  &cur_sw);
+    eglQuerySurface(ctx.display, ctx.surface, EGL_HEIGHT, &cur_sh);
+    if (cur_sw <= 0 || cur_sh <= 0) return;
 
-    // Determine target buffer dims
-    int target_w = (orient == 1) ? ctx.nat_h : ctx.nat_w;
-    int target_h = (orient == 1) ? ctx.nat_w : ctx.nat_h;
-
-    // If buffer doesn't match target orientation, resize it explicitly.
-    // We must call setBuffersGeometry here (not once at init) because the
-    // ANativeWindow needs an explicit resize call each time orientation changes.
-    if (ctx.egl_fmt > 0 && ctx.surface != EGL_NO_SURFACE && ctx.display != EGL_NO_DISPLAY) {
-        int cur_sw = 0, cur_sh = 0;
-        eglQuerySurface(ctx.display, ctx.surface, EGL_WIDTH,  &cur_sw);
-        eglQuerySurface(ctx.display, ctx.surface, EGL_HEIGHT, &cur_sh);
-        if (cur_sw != target_w || cur_sh != target_h) {
-            ANativeWindow_setBuffersGeometry(ctx.window, target_w, target_h, ctx.egl_fmt);
-            fprintf(stderr, "[OVL] resize %dx%d → %dx%d\n", cur_sw, cur_sh, target_w, target_h);
-        }
-    }
-
-    // Determine rotation (0=portrait, 1=90CW, 2=180, 3=90CCW)
-    int rot = 0;
-    if (orient == 1) {
-        int hint = 0;
+    // TRANSFORM_HINT (8): non-zero means the display orientation differs from
+    // our buffer — SF is applying a transform to compensate.
+    // hint=4 (ROT_90 CW) or hint=7 (ROT_270 / FLIP+ROT_90 CCW) = 90° mismatch.
+    // Strategy: when hint is non-zero, swap buffer dims to match display.
+    // After the swap + eglSwapBuffers, SF realigns → hint goes back to 0.
+    // No oscillation: we only act when hint != 0, and it becomes 0 after resize.
+    int hint = 0;
+    {
         auto* w = reinterpret_cast<ANW_Internal*>(ctx.window);
         if (w && w->query) w->query(ctx.window, 8 /*TRANSFORM_HINT*/, &hint);
-        rot = (hint == 7) ? 3 : 1;
+    }
+    fprintf(stderr, "[OVL] query hint=%d buf=%dx%d\n", hint, cur_sw, cur_sh);
+
+    int target_w = cur_sw;
+    int target_h = cur_sh;
+    int rot = ctx.cur_rot;
+
+    if (hint == 4 || hint == 7) {
+        // Display and buffer are misaligned by 90° — swap to realign
+        target_w = cur_sh;
+        target_h = cur_sw;
+        rot = (hint == 7) ? 3 : 1;  // 4=90CW=rot1, 7=90CCW=rot3
+        ANativeWindow_setBuffersGeometry(ctx.window, target_w, target_h, ctx.egl_fmt);
+        fprintf(stderr, "[OVL] rotate hint=%d buf %dx%d → %dx%d\n",
+                hint, cur_sw, cur_sh, target_w, target_h);
+    } else if (hint == 0) {
+        // Buffer matches display — infer orientation from dims
+        rot = (cur_sw > cur_sh) ? 1 : 0;
+        // Preserve CCW if we were in rot3 and dims are still landscape
+        if (rot == 1 && ctx.cur_rot == 3) rot = 3;
+    } else if (hint == 3) {
+        // ROT_180
+        rot = 2;
+        target_w = cur_sw;
+        target_h = cur_sh;
     }
 
     if (target_w != ctx.width || target_h != ctx.height || rot != ctx.cur_rot) {
