@@ -117,9 +117,7 @@ int main() {
     ImGui::CreateContext();
     fprintf(stderr, "[KERNEL] ImGui context OK\n");
     ImGuiIO& io = ImGui::GetIO();
-    // Always set DisplaySize to portrait buffer dims — RenderDrawData uses this directly
-    // for glViewport and projection. Logical (landscape) dims go to menu.vis_w/h only.
-    io.DisplaySize = {(float)overlay.nat_w, (float)overlay.nat_h};
+    io.DisplaySize = {(float)overlay.width, (float)overlay.height};
     io.IniFilename = nullptr;
     // Scale font based on portrait width (shorter dimension) — 1080 is reference.
     // Using height causes 3.5x scale on tall screens, making the menu wider than display.
@@ -171,8 +169,8 @@ int main() {
             input.screen_w.store(overlay.width);
             input.screen_h.store(overlay.height);
             input.rotation.store(overlay.cur_rot);
-            // DisplaySize stays portrait (buffer dims) — rotation handled in projection
-            io.DisplaySize = {(float)overlay.nat_w, (float)overlay.nat_h};
+            // DisplaySize = logical dims (landscape when rotated) — projection handles the rest
+            io.DisplaySize = {(float)overlay.width, (float)overlay.height};
             // vis_w/h = logical dims (landscape when rotated) — used by menu layout
             menu.vis_w = (float)overlay.width;
             menu.vis_h = (float)overlay.height;
@@ -203,8 +201,8 @@ int main() {
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplAndroid_NewFrame();
-        // Restore portrait DisplaySize — ImGui_ImplAndroid_NewFrame may overwrite it
-        io.DisplaySize = {(float)overlay.nat_w, (float)overlay.nat_h};
+        // Restore logical DisplaySize — ImGui_ImplAndroid_NewFrame may overwrite it
+        io.DisplaySize = {(float)overlay.width, (float)overlay.height};
         input_pump_imgui(input);  // forward /dev/input touch events to ImGui
         ImGui::NewFrame();
 
