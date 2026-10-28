@@ -5,6 +5,9 @@
 #include "theme/theme.hpp"
 #include "antilose_menu.h"        // Logo, AntiloseBindFonts, SyncAccentFromMenu, SyncMenuCfg
 #include "antilose_watermark.h"   // Watermark (NexuraWare)
+#include "screenshot.hpp"
+#include "../draw/draw.h"
+#include <sys/system_properties.h>
 #include "menu_inflex.h"          // Menu::cfg, Menu::open
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -229,28 +232,23 @@ namespace ui::menu {
             push_bold();
             ImGui::BeginDisabled(!Menu::cfg.espEnabled);
 
-            auto row = [](const char* lbl, ImVec4* col, float* thick, float tmin=0.5f, float tmax=5.f) {
+            auto row = [](const char* lbl, ImVec4* col) {
                 ImGui::TextUnformatted(lbl);
-                ImGui::SetNextItemWidth(100.f);
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(-1.f);
                 std::string cid = std::string("##c_") + lbl;
                 ImGui::ColorEdit4(cid.c_str(), &col->x,
                     ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
-                if (thick) {
-                    ImGui::SameLine();
-                    ImGui::SetNextItemWidth(-1.f);
-                    std::string tid = std::string("##t_") + lbl;
-                    ImGui::SliderFloat(tid.c_str(), thick, tmin, tmax, "%.1f px");
-                }
                 ImGui::Spacing();
             };
 
-            row("Name",        &Menu::cfg.nameColor,       &Menu::cfg.nameThick);
-            row("Box",         &Menu::cfg.boxColor,        &Menu::cfg.boxThick);
-            row("Health bar",  &Menu::cfg.hpBarColor,      &Menu::cfg.hpBarThick);
-            row("Snap line",   &Menu::cfg.snapLineColor,   &Menu::cfg.snapLineThick);
-            row("Enemy count", &Menu::cfg.enemyCountColor, nullptr);
-            row("Distance",    &Menu::cfg.distanceColor,   &Menu::cfg.distanceThick);
-            row("Skeleton",    &Menu::cfg.skeletonColor,   &Menu::cfg.skeletonThick);
+            row("Name",        &Menu::cfg.nameColor);
+            row("Box",         &Menu::cfg.boxColor);
+            row("Health bar",  &Menu::cfg.hpBarColor);
+            row("Snap line",   &Menu::cfg.snapLineColor);
+            row("Enemy count", &Menu::cfg.enemyCountColor);
+            row("Distance",    &Menu::cfg.distanceColor);
+            row("Skeleton",    &Menu::cfg.skeletonColor);
 
             ImGui::EndDisabled();
             pop_bold();
@@ -270,7 +268,22 @@ namespace ui::menu {
             ImGui::TextUnformatted("CLAUDE PRO v1.0");
             ImGui::TextUnformatted("Developer: @PICKMEBOY00");
             sep();
-            ImGui::TextDisabled("System");
+            ImGui::TextDisabled("Device");
+            {
+                char model[PROP_VALUE_MAX]={}, brand[PROP_VALUE_MAX]={},
+                     ver[PROP_VALUE_MAX]={}, sdk[PROP_VALUE_MAX]={};
+                __system_property_get("ro.product.model",   model);
+                __system_property_get("ro.product.brand",   brand);
+                __system_property_get("ro.build.version.release", ver);
+                __system_property_get("ro.build.version.sdk",     sdk);
+                char buf[128];
+                std::snprintf(buf, sizeof(buf), "%s %s", brand, model);
+                ImGui::TextUnformatted(buf);
+                std::snprintf(buf, sizeof(buf), "Android %s (SDK %s)", ver, sdk);
+                ImGui::TextUnformatted(buf);
+            }
+            sep();
+            ImGui::TextDisabled("Overlay");
             {
                 char buf[64];
                 std::snprintf(buf, sizeof(buf), "Screen: %.0f x %.0f", g_sw, g_sh);
@@ -285,6 +298,20 @@ namespace ui::menu {
 
         if (begin_section("appearance & exit", cs, true)) {
             push_bold();
+            ImGui::TextDisabled("Screenshot");
+            static bool shotDone = false;
+            static float shotTimer = 0.f;
+            if (shotTimer > 0.f) shotTimer -= ImGui::GetIO().DeltaTime;
+            if (ImGui::Button("Chup man hinh", ImVec2(-1.f, 36.f))) {
+                shotDone = screenshot::take(native_window_screen_x, native_window_screen_y);
+                shotTimer = 2.5f;
+            }
+            if (shotTimer > 0.f) {
+                ImGui::TextColored(
+                    shotDone ? ImVec4(.2f,1.f,.4f,1.f) : ImVec4(1.f,.3f,.3f,1.f),
+                    shotDone ? "Da luu vao DCIM/Screenshots" : "Loi khi chup");
+            }
+            sep();
             ImGui::TextDisabled("Theme");
             const char* themes[3] = {"Dark","Light","Neon"};
             for (int i = 0; i < 3; i++) {

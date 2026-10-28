@@ -21,6 +21,7 @@ set(SOURCES
     src/ui/antilose_box_shadow.cpp
     src/ui/bar.cpp
     src/ui/menu.cpp
+    src/ui/screenshot.cpp
     src/ui/menu_inflex.cpp
     src/ui/widgets/widgets.cpp
     src/protect/oxorany.cpp
