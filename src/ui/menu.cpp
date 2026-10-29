@@ -14,6 +14,7 @@
 #include <string>
 #include <cstdio>
 #include <cmath>
+#include "../ff/ff_pid.hpp"
 
 extern ImFont* fontBold;
 extern ImFont* fontMedium;
@@ -332,6 +333,56 @@ namespace ui::menu {
         end_section();
     }
 
+    // TAB 2 — DEBUG
+    // ════════════════════════════════════════════════════════════════════════
+    static void tab_debug() {
+        const ImVec2 cs = half_size();
+
+        if (begin_section("game process", cs, true)) {
+            push_bold();
+            int32_t pid = ff::get_pid();
+            ImGui::TextDisabled("Free Fire PID");
+            if (pid > 0) {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "%d", pid);
+                ImGui::TextColored(ImVec4(.2f,1.f,.4f,1.f), buf);
+                ImGui::TextColored(ImVec4(.5f,.9f,.5f,1.f), "Process found");
+            } else {
+                ImGui::TextColored(ImVec4(1.f,.3f,.3f,1.f), "0");
+                ImGui::TextColored(ImVec4(1.f,.5f,.5f,1.f), "Not running");
+            }
+            sep();
+            ImGui::TextDisabled("Package");
+            ImGui::TextUnformatted(ff::PACKAGE);
+            pop_bold();
+        }
+        end_section();
+        ImGui::SameLine();
+
+        if (begin_section("render stats", cs, true)) {
+            push_bold();
+            ImGui::TextDisabled("Overlay");
+            {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "FPS: %.1f", ImGui::GetIO().Framerate);
+                ImGui::TextUnformatted(buf);
+                std::snprintf(buf, sizeof(buf), "dt: %.2f ms", ImGui::GetIO().DeltaTime * 1000.f);
+                ImGui::TextUnformatted(buf);
+                std::snprintf(buf, sizeof(buf), "Buffer: %.0f x %.0f", g_sw, g_sh);
+                ImGui::TextUnformatted(buf);
+            }
+            sep();
+            ImGui::TextDisabled("Menu alpha");
+            {
+                char buf[32];
+                std::snprintf(buf, sizeof(buf), "%.3f", g_alpha);
+                ImGui::TextUnformatted(buf);
+            }
+            pop_bold();
+        }
+        end_section();
+    }
+
     // ════════════════════════════════════════════════════════════════════════
     // Dispatch / Tab bar / Title
     // ════════════════════════════════════════════════════════════════════════
@@ -339,26 +390,27 @@ namespace ui::menu {
         switch(g_tab){
             case 0: tab_visuals();  break;
             case 1: tab_settings(); break;
+            case 2: tab_debug();    break;
             default: tab_visuals(); break;
         }
     }
 
     static void render_tab_bar() {
-        const char* names[2]={"visuals","settings"};
+        const char* names[3]={"visuals","settings","debug"};
         const ImGuiStyle& st=ImGui::GetStyle();
         if (!begin_section("  ",
             ImVec2(ImGui::GetWindowSize().x-st.WindowPadding.x*2.f,TABS_HEIGHT)))
             return;
         push_bold();
-        for(int i=0;i<2;++i){
+        for(int i=0;i<3;++i){
             char id[32]; std::snprintf(id,sizeof(id),"%s##t%d",names[i],i);
             ImGui::PushStyleColor(ImGuiCol_Text,
                 g_tab==i?IM_COL32(255,255,255,255):IM_COL32(150,150,150,255));
             ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign,ImVec2(.5f,.5f));
-            float tw=(ImGui::GetWindowSize().x/2.f)-(st.FramePadding.x+st.WindowPadding.x);
+            float tw=(ImGui::GetWindowSize().x/3.f)-(st.FramePadding.x+st.WindowPadding.x);
             if(ImGui::Selectable(id,g_tab==i,0,ImVec2(tw,0.f))) g_tab=i;
             ImGui::PopStyleVar(); ImGui::PopStyleColor();
-            if(i!=1) ImGui::SameLine();
+            if(i!=2) ImGui::SameLine();
         }
         pop_bold();
         end_section();

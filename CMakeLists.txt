@@ -23,6 +23,7 @@ set(SOURCES
     src/ui/menu.cpp
     src/ui/screenshot.cpp
     src/ui/menu_inflex.cpp
+    src/ff/ff_pid.cpp
     src/ui/widgets/widgets.cpp
     src/protect/oxorany.cpp
 )
@@ -32,6 +33,7 @@ add_executable(ffkernel ${SOURCES})
 target_include_directories(ffkernel PRIVATE
     src
     src/imgui
+    src/ff
 )
 
 # GLES3 — matches Wolsaw draw.cpp (#version 300 es)
