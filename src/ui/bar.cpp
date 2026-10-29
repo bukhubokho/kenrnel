@@ -26,7 +26,7 @@ namespace ui::bar {
         g_alpha = ease(prog);
 
         // ── Floating circle button — only visible when menu is CLOSED ─────────
-        const float   R    = 28.f;
+        const float   R    = 38.f;
         const float   D    = R * 2.f;
         static ImVec2 fpos = {g_sw - D - 20.f, g_sh * 0.5f - R};
         static bool   dragging = false;
