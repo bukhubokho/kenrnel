@@ -16,6 +16,7 @@
 #include <cmath>
 #include "../ff/ff_pid.hpp"
 #include "../ff/ff_read.hpp"
+#include "../ff/esp_draw.hpp"
 
 extern ImFont* fontBold;
 extern ImFont* fontMedium;
@@ -395,6 +396,9 @@ namespace ui::menu {
             ImGui::TextDisabled("Players found");
             std::snprintf(buf, sizeof(buf), "%d", d.players_found);
             ImGui::TextColored(d.players_found > 0 ? ImVec4(.2f,1.f,.4f,1.f) : ImVec4(1.f,.6f,.2f,1.f), "%s", buf);
+            ImGui::TextDisabled("Cam OK");
+            ImGui::TextColored(esp::g_cam_ok ? ImVec4(.2f,1.f,.4f,1.f) : ImVec4(1.f,.3f,.3f,1.f),
+                "%s", esp::g_cam_ok ? "YES" : "NO");
             pop_bold();
         }
         end_section();
