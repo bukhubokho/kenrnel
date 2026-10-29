@@ -128,7 +128,7 @@ struct Settings {
     int  theme = 0;   // 0=Dark 1=Light 2=Neon
 
     // ── ESP master + per-feature toggles ─────────────────────────────────────
-    bool espEnabled   = false;
+    bool espEnabled   = true;
     // (name, boxEsp, healthBar, snapline, distance, skeleton reused from above)
     bool enemyCount   = false;
 
