@@ -168,14 +168,19 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
         p.is_bot   = rd<uint8_t>(drv_fd, pid, player + Player_IsBot) != 0;
 
         // HP — chain: player + Player_HP → list ptr → entry → value
+        // If chain fails (component not init'd for distant players), keep player visible
+        bool hp_ok = false;
         uint64_t hp_list = rd<uint64_t>(drv_fd, pid, player + Player_HP);
         if (hp_list) {
             uint64_t hp_entry = rd<uint64_t>(drv_fd, pid, hp_list + HP_Entry);
             if (hp_entry) {
                 p.hp = rd<float>(drv_fd, pid, hp_entry + HP_Value);
+                hp_ok = true;
             }
         }
-        if (p.hp <= 0.f) continue;
+        // Only skip if we got a real HP read and it's zero (actually dead)
+        if (hp_ok && p.hp <= 0.f) continue;
+        if (!hp_ok) p.hp = 100.f;  // unknown — assume alive
 
         // Positions
         uint64_t head_tf = rd<uint64_t>(drv_fd, pid, player + Player_HeadTF);
