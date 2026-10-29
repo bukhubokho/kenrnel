@@ -363,6 +363,13 @@ namespace ui::menu {
                 std::snprintf(buf, sizeof(buf), "0x%llX", (unsigned long long)val);
                 ImGui::TextColored(val ? ImVec4(.6f,1.f,.6f,1.f) : ImVec4(1.f,.4f,.4f,1.f), "%s", buf);
             };
+            ImGui::TextDisabled("rt_set_pid");
+            ImGui::TextColored(d.rt_set_ok ? ImVec4(.2f,1.f,.4f,1.f) : ImVec4(1.f,.3f,.3f,1.f),
+                "%s", d.rt_set_ok ? "OK" : "FAIL");
+            ImGui::TextDisabled("ELF magic");
+            std::snprintf(buf, sizeof(buf), "0x%08X", d.elf_magic);
+            ImGui::TextColored(d.elf_magic == 0x464C457F ? ImVec4(.2f,1.f,.4f,1.f) : ImVec4(1.f,.3f,.3f,1.f), "%s", buf);
+            sep();
             row("ReadAddr:  ", d.gf_read_addr);
             row("Il2Klass:  ", d.gf_static);
             row("StaticFlds:", d.base_game);

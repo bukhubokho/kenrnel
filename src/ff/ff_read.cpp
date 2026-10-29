@@ -67,10 +67,9 @@ static uint64_t find_il2cpp_base(uint32_t pid) {
 bool init(int drv_fd, uint32_t pid) {
     if (drv_fd < 0 || pid == 0) return false;
 
-    // Register PID with driver (needed for rt_read to work)
-    rt_set_pid(drv_fd, pid, PACKAGE);
+    uint64_t drv_base = rt_set_pid(drv_fd, pid, PACKAGE);
+    g_dbg.rt_set_ok = (drv_base != 0);
 
-    // Get libil2cpp.so base from /proc/maps
     uint64_t base = find_il2cpp_base(pid);
     if (!base) return false;
     g_base = base;
@@ -84,14 +83,21 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
     g_dbg = {};
     if (drv_fd < 0 || pid == 0 || g_base == 0) return 0;
 
-    // GameFacade: offset in dump points directly to static_fields* (no 0xB8 hop)
+    // Sanity: read ELF magic at g_base to verify driver is reading correctly
+    g_dbg.elf_magic    = rd<uint32_t>(drv_fd, pid, g_base);
     g_dbg.gf_read_addr = g_base + GameFacade;
-    uint64_t base_game = rd<uint64_t>(drv_fd, pid, g_base + GameFacade);
-    g_dbg.gf_static  = 0;      // not used in direct mode
-    g_dbg.base_game  = base_game;
+
+    // Step 1: read Il2CppClass* (TypeInfo) from g_base + GameFacade RVA
+    uint64_t gf_static = rd<uint64_t>(drv_fd, pid, g_base + GameFacade);
+    g_dbg.gf_static = gf_static;
+    if (!gf_static) return 0;
+
+    // Step 2: Il2CppClass* + 0xB8 = static_fields*
+    uint64_t base_game = rd<uint64_t>(drv_fd, pid, gf_static + GameFacade_SF);
+    g_dbg.base_game = base_game;
     if (!base_game) return 0;
 
-    // static_fields + 0x8 = CurrentMatchGame (MatchGame*)
+    // Step 3: static_fields + 0x8 = CurrentMatchGame (MatchGame*)
     uint64_t match_game = rd<uint64_t>(drv_fd, pid, base_game + GameFacade_MatchGame);
     g_dbg.match_game = match_game;
     if (!match_game) return 0;

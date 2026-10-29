@@ -31,9 +31,10 @@ extern uint64_t g_base;
 // Debug — last seen pointer values, for the debug tab
 struct DbgChain {
     uint64_t gf_read_addr;   // g_base + GameFacade offset (address we read)
+    uint32_t elf_magic;      // read 4 bytes at g_base — should be 0x464C457F if driver works
     uint64_t gf_static;
-    uint64_t base_game;      // static_fields*  (gf_static + 0xB8)
-    uint64_t match_game;     // CurrentMatchGame (static_fields + 0x8)
+    uint64_t base_game;      // static_fields*
+    uint64_t match_game;     // CurrentMatchGame
     uint64_t match;
     uint64_t local_player;
     uint64_t dict;
