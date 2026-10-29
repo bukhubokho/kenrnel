@@ -45,22 +45,23 @@ static Vec3 read_transform_pos(int fd, uint32_t pid, uint64_t tf_ptr) {
 }
 
 // ── Find libil2cpp.so base from /proc/<pid>/maps ──────────────────────────────
-static uint64_t find_il2cpp_base(uint32_t pid) {
+// Returns all candidate start addresses (up to 16) that map libil2cpp.so
+static int find_il2cpp_candidates(uint32_t pid, uint64_t* out, int max) {
     char path[64];
     snprintf(path, sizeof(path), "/proc/%u/maps", pid);
     FILE* f = fopen(path, "r");
     if (!f) return 0;
 
     char line[256];
-    uint64_t base = 0;
-    while (fgets(line, sizeof(line), f)) {
+    int count = 0;
+    while (fgets(line, sizeof(line), f) && count < max) {
         if (strstr(line, "libil2cpp.so")) {
             uint64_t addr = (uint64_t)strtoull(line, nullptr, 16);
-            if (base == 0 || addr < base) base = addr;
+            out[count++] = addr;
         }
     }
     fclose(f);
-    return base;
+    return count;
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
@@ -68,12 +69,15 @@ bool init(int drv_fd, uint32_t pid) {
     if (drv_fd < 0 || pid == 0) return false;
 
     g_dbg.rt_set_ok = rt_set_pid_ok(drv_fd, pid, PACKAGE);
-    uint64_t drv_base = rt_set_pid(drv_fd, pid, PACKAGE);
+    rt_set_pid(drv_fd, pid, PACKAGE);
 
-    uint64_t base = find_il2cpp_base(pid);
-    if (!base) return false;
-    g_base = base;
-    return true;
+    uint64_t candidates[16];
+    int n = find_il2cpp_candidates(pid, candidates, 16);
+    for (int i = 0; i < n; i++) {
+        uint32_t magic = rd<uint32_t>(drv_fd, pid, candidates[i]);
+        if (magic == 0x464C457F) { g_base = candidates[i]; break; }
+    }
+    return g_base != 0;
 }
 
 // ── Update — walk entity dict each frame ─────────────────────────────────────
@@ -86,11 +90,14 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
     // Refresh SET_PID every frame — some RTkernel builds expire the mm ref
     g_dbg.rt_set_ok = rt_set_pid_ok(drv_fd, pid, PACKAGE);
 
-    // libil2cpp.so can have multiple mappings — only use one with valid ELF header
-    uint64_t fresh_base = find_il2cpp_base(pid);
-    if (fresh_base) {
-        uint32_t magic = rd<uint32_t>(drv_fd, pid, fresh_base);
-        if (magic == 0x464C457F) g_base = fresh_base;
+    // libil2cpp.so has multiple mappings — find the one with ELF header
+    {
+        uint64_t candidates[16];
+        int n = find_il2cpp_candidates(pid, candidates, 16);
+        for (int i = 0; i < n; i++) {
+            uint32_t magic = rd<uint32_t>(drv_fd, pid, candidates[i]);
+            if (magic == 0x464C457F) { g_base = candidates[i]; break; }
+        }
     }
     if (!g_base) return 0;
 
