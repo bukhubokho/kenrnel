@@ -389,22 +389,6 @@ namespace ui::menu {
             dl->AddText(lpos,ImColor(255,255,255,(int)(255*g_alpha)),label);
         }
 
-        // ── X close button (top-right corner) ────────────────────────────────
-        const float  btnSz = 28.f;
-        const ImVec2 winP  = ImGui::GetWindowPos();
-        const ImVec2 winSz = ImGui::GetWindowSize();
-        ImVec2 btnPos(winP.x + winSz.x - btnSz - 6.f,
-                      winP.y + winSz.y * .5f - btnSz * .5f);
-        ImGui::SetCursorScreenPos(btnPos);
-        ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(.70f,.10f,.10f,1.f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(.90f,.15f,.15f,1.f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(1.f, .20f,.20f,1.f));
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, btnSz * .5f);
-        if (ImGui::Button("X", ImVec2(btnSz, btnSz)))
-            ui::bar::g_open = false;
-        ImGui::PopStyleVar();
-        ImGui::PopStyleColor(3);
-
         end_section();
     }
 
