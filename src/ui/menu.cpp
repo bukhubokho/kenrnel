@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cmath>
 #include "../ff/ff_pid.hpp"
+#include "../ff/ff_read.hpp"
 
 extern ImFont* fontBold;
 extern ImFont* fontMedium;
