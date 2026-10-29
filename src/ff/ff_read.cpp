@@ -131,10 +131,9 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
     g_dbg.match = match;
     if (!match) return 0;
 
-    // Check match running
+    // Check match running (informational only — training mode has running=0 but valid match ptr)
     uint8_t running = rd<uint8_t>(drv_fd, pid, match + MatchIsRunning);
     g_dbg.match_running = running != 0;
-    if (!running) return 0;
 
     uint64_t local_player = rd<uint64_t>(drv_fd, pid, match + Match_LocalPlayer);
     g_dbg.local_player = local_player;
