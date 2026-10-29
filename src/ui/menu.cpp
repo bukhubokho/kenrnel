@@ -6,7 +6,6 @@
 #include "antilose_menu.h"        // Logo, AntiloseBindFonts, SyncAccentFromMenu, SyncMenuCfg
 #include "antilose_watermark.h"   // Watermark (NexuraWare)
 #include "screenshot.hpp"
-#include "../draw/draw.h"
 #include <sys/system_properties.h>
 #include "menu_inflex.h"          // Menu::cfg, Menu::open
 #include "imgui.h"
@@ -303,7 +302,7 @@ namespace ui::menu {
             static float shotTimer = 0.f;
             if (shotTimer > 0.f) shotTimer -= ImGui::GetIO().DeltaTime;
             if (ImGui::Button("Chup man hinh", ImVec2(-1.f, 36.f))) {
-                shotDone = screenshot::take(native_window_screen_x, native_window_screen_y);
+                shotDone = screenshot::take(0, 0);
                 shotTimer = 2.5f;
             }
             if (shotTimer > 0.f) {
