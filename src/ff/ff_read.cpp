@@ -125,15 +125,18 @@ static uint64_t heap_scan_for_match(int fd, uint32_t pid) {
     }
     if (s_heap_n == 0) return 0;
 
-    // Scan 1000 candidates this tick (0x1000 stride)
-    constexpr uint64_t STRIDE       = 0x1000;
-    constexpr int      CANDS_PER_MS = 1000;
+    // Scan 200 candidates per tick (0x1000 stride).
+    // Each candidate: one bulk rt_read of 0x140 bytes → check in buffer.
+    // ~200 IOCTLs per 100ms tick (vs 1000+ single-byte reads).
+    constexpr uint64_t STRIDE     = 0x1000;
+    constexpr int      CANDS_TICK = 200;
+    uint8_t blk[0x140];
 
-    for (int i = 0; i < CANDS_PER_MS; i++) {
-        if (s_heap_ri >= s_heap_n) { s_heap_ri = 0; s_heap_off = 0; break; } // full lap done
+    for (int i = 0; i < CANDS_TICK; i++) {
+        if (s_heap_ri >= s_heap_n) { s_heap_ri = 0; s_heap_off = 0; break; }
 
         HeapRange& hr = s_heap[s_heap_ri];
-        if (s_heap_off + 0x2500 >= hr.size) {  // exhausted this range
+        if (s_heap_off + 0x2500 >= hr.size) {
             s_heap_ri++;
             s_heap_off = 0;
             continue;
@@ -142,19 +145,23 @@ static uint64_t heap_scan_for_match(int fd, uint32_t pid) {
         uint64_t candidate = hr.start + s_heap_off;
         s_heap_off += STRIDE;
 
-        // Fast filter: MatchIsRunning == 1
-        uint8_t run = rd<uint8_t>(fd, pid, candidate + MatchIsRunning);
-        if (run != 1) continue;
+        // One bulk read covering offsets 0..0x13F
+        if (!rt_read(fd, pid, candidate, blk, sizeof(blk))) continue;
 
-        // LocalPlayer must be a non-null pointer (looks like heap addr)
-        uint64_t lp = rd<uint64_t>(fd, pid, candidate + Match_LocalPlayer);
+        // MatchIsRunning at 0xCC
+        if (blk[MatchIsRunning] != 1) continue;
+
+        // LocalPlayer at 0xD8 — must be heap-aligned pointer
+        uint64_t lp = 0;
+        __builtin_memcpy(&lp, blk + Match_LocalPlayer, 8);
         if (lp < 0x100000 || (lp & 7)) continue;
 
-        // PlayerDict must be non-null
-        uint64_t dict = rd<uint64_t>(fd, pid, candidate + Match_PlayerDict);
+        // PlayerDict at 0x128 — must be heap-aligned pointer
+        uint64_t dict = 0;
+        __builtin_memcpy(&dict, blk + Match_PlayerDict, 8);
         if (dict < 0x100000 || (dict & 7)) continue;
 
-        // Dict count sanity
+        // Dict count sanity (one extra read)
         int32_t cnt = rd<int32_t>(fd, pid, dict + Dict_Count);
         if (cnt <= 0 || cnt > MAX_PLAYERS) continue;
 
