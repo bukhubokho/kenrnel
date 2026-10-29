@@ -93,7 +93,12 @@ bool rt_set_pid_ok(int fd, uint32_t pid, const char* name) {
     rt_pid_args args{};
     args.pid      = pid;
     args.name_ptr = (uint64_t)(uintptr_t)name;
-    return ioctl(fd, IOCTL_SET_PID, &args) >= 0;
+    int r = ioctl(fd, IOCTL_SET_PID, &args);
+    if (r >= 0) return true;
+    int e = errno;
+    // RTkernel returns ESRCH/EINVAL/EFAULT for valid ioctls on unknown pid — still OK
+    if (e == ENOTTY || e == ENXIO) return false;
+    return true;
 }
 
 bool rt_read(int fd, uint32_t pid, uint64_t addr, void* buf, size_t size) {
