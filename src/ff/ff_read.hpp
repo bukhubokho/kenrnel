@@ -38,7 +38,10 @@ struct DbgChain {
     uint64_t match;
     uint64_t local_player;
     uint64_t dict;
-    int32_t  dict_count;
+    int32_t  dict_count;     // NOLEDCGOJKC 0x128 count
+    int32_t  dict_all_count; // NJCGFLANJLH 0x130 count
+    int32_t  list_count;     // LMOIPODCHOL 0x158 count
+    int32_t  list2_count;    // DPFFPGAFGDK 0x160 count
     int32_t  players_found;
     bool     match_running;
     bool     rt_set_ok;

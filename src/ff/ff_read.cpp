@@ -144,25 +144,59 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
     uint64_t local_player = rd<uint64_t>(drv_fd, pid, match + Match_LocalPlayer);
     g_dbg.local_player = local_player;
 
-    // Player dictionary
-    uint64_t dict = rd<uint64_t>(drv_fd, pid, match + Match_PlayerDict);
+    // Probe all player collections — record counts for debug
+    uint64_t dict     = rd<uint64_t>(drv_fd, pid, match + Match_PlayerDict);
+    uint64_t dict_all = rd<uint64_t>(drv_fd, pid, match + Match_PlayerDictAll);
+    uint64_t list_ptr = rd<uint64_t>(drv_fd, pid, match + Match_PlayerList);
+    uint64_t list2_ptr= rd<uint64_t>(drv_fd, pid, match + Match_PlayerList2);
     g_dbg.dict = dict;
-    if (!dict) return 0;
 
-    uint64_t entries_arr = rd<uint64_t>(drv_fd, pid, dict + Dict_Entries);
-    if (!entries_arr) return 0;
+    int32_t cnt_dict  = dict     ? rd<int32_t>(drv_fd, pid, dict      + Dict_Count) : 0;
+    int32_t cnt_dall  = dict_all ? rd<int32_t>(drv_fd, pid, dict_all  + Dict_Count) : 0;
+    int32_t cnt_list  = list_ptr ? rd<int32_t>(drv_fd, pid, list_ptr  + List_Size)  : 0;
+    int32_t cnt_list2 = list2_ptr? rd<int32_t>(drv_fd, pid, list2_ptr + List_Size)  : 0;
+    g_dbg.dict_count  = cnt_dict;
+    g_dbg.dict_all_count = cnt_dall;
+    g_dbg.list_count  = cnt_list;
+    g_dbg.list2_count = cnt_list2;
 
-    int32_t count = rd<int32_t>(drv_fd, pid, dict + Dict_Count);
-    g_dbg.dict_count = count;
-    if (count <= 0 || count > MAX_PLAYERS) return 0;
+    // Pick the source with the most players (most likely all-players)
+    // Prefer List (0x158 > 0x160) over Dict when counts differ
+    enum SrcKind { SRC_LIST, SRC_LIST2, SRC_DICT_ALL, SRC_DICT } src;
+    int32_t max_count = 0;
+    src = SRC_DICT; max_count = cnt_dict;
+    if (cnt_dall  > max_count) { src = SRC_DICT_ALL; max_count = cnt_dall; }
+    if (cnt_list2 > max_count) { src = SRC_LIST2;    max_count = cnt_list2; }
+    if (cnt_list  > max_count) { src = SRC_LIST;     max_count = cnt_list; }
 
-    // entries data starts after il2cpp array header (Dict_ArrayHeader = 0x20)
-    uint64_t data = entries_arr + Dict_ArrayHeader;
+    if (max_count <= 0 || max_count > MAX_PLAYERS) return 0;
+
+    // Build flat array of player ptrs from the best source
+    uint64_t ptrs[MAX_PLAYERS] = {};
+    int ptrs_n = 0;
+
+    if (src == SRC_LIST || src == SRC_LIST2) {
+        uint64_t lp   = (src == SRC_LIST) ? list_ptr : list2_ptr;
+        uint64_t items= rd<uint64_t>(drv_fd, pid, lp + List_Items);
+        if (items) {
+            uint64_t base_elem = items + 0x20; // array header 0x20
+            for (int i = 0; i < max_count; i++)
+                ptrs[ptrs_n++] = rd<uint64_t>(drv_fd, pid, base_elem + (uint64_t)i * 8);
+        }
+    } else {
+        // Dict source (SRC_DICT or SRC_DICT_ALL)
+        uint64_t dp = (src == SRC_DICT_ALL) ? dict_all : dict;
+        uint64_t entries_arr = dp ? rd<uint64_t>(drv_fd, pid, dp + Dict_Entries) : 0;
+        if (entries_arr) {
+            uint64_t data = entries_arr + Dict_ArrayHeader;
+            for (int i = 0; i < max_count; i++)
+                ptrs[ptrs_n++] = rd<uint64_t>(drv_fd, pid, data + (uint64_t)i * Dict_EntryStride + Dict_EntryValue);
+        }
+    }
 
     int found = 0;
-    for (int i = 0; i < count && found < MAX_PLAYERS; i++) {
-        uint64_t entry_base = data + (uint64_t)i * Dict_EntryStride;
-        uint64_t player     = rd<uint64_t>(drv_fd, pid, entry_base + Dict_EntryValue);
+    for (int i = 0; i < ptrs_n && found < MAX_PLAYERS; i++) {
+        uint64_t player = ptrs[i];
         if (!player) continue;
 
         PlayerInfo& p = players[found];

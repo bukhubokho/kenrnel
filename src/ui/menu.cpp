@@ -382,8 +382,9 @@ namespace ui::menu {
             ImGui::TextDisabled("Match running");
             ImGui::TextColored(d.match_running ? ImVec4(.2f,1.f,.4f,1.f) : ImVec4(1.f,.4f,.4f,1.f),
                 "%s", d.match_running ? "YES" : "NO");
-            ImGui::TextDisabled("Dict count");
-            std::snprintf(buf, sizeof(buf), "%d", d.dict_count);
+            ImGui::TextDisabled("D0x128 D0x130 L0x158 L0x160");
+            std::snprintf(buf, sizeof(buf), "%d  %d  %d  %d",
+                d.dict_count, d.dict_all_count, d.list_count, d.list2_count);
             ImGui::TextUnformatted(buf);
             ImGui::TextDisabled("Players found");
             std::snprintf(buf, sizeof(buf), "%d", d.players_found);

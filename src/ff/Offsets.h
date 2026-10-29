@@ -10,13 +10,21 @@ namespace Offsets {
     constexpr uintptr_t BaseGame_Timer           = 0x20;
     constexpr uintptr_t Timer_Delta              = 0x2C;
     constexpr uintptr_t MatchIsRunning           = 0xCC;
-    constexpr uintptr_t Match_PlayerDict         = 0x128;  // JMAGGLCNGIG.NOLEDCGOJKC — dump.cs confirmed
+    // Player collections in JMAGGLCNGIG (match object)
+    constexpr uintptr_t Match_PlayerDict         = 0x128;  // NOLEDCGOJKC — Dict<pid,Player>, team-only
+    constexpr uintptr_t Match_PlayerDictAll      = 0x130;  // NJCGFLANJLH — Dict<pid,Player>, all players?
+    constexpr uintptr_t Match_PlayerList         = 0x158;  // LMOIPODCHOL — List<Player>, likely all alive
+    constexpr uintptr_t Match_PlayerList2        = 0x160;  // DPFFPGAFGDK — List<Player>, alt
     constexpr uintptr_t Match_LocalPlayer        = 0xD8;   // JMAGGLCNGIG.MHJCLOPOBAA — dump.cs 0xD8
+    // il2cpp Dictionary<K,V> internals
     constexpr uintptr_t Dict_Entries             = 0x18;
     constexpr uintptr_t Dict_Count               = 0x20;
     constexpr uintptr_t Dict_ArrayHeader         = 0x20;
     constexpr uintptr_t Dict_EntryStride         = 0x18;
     constexpr uintptr_t Dict_EntryValue          = 0x10;
+    // il2cpp List<T> internals
+    constexpr uintptr_t List_Items               = 0x10;   // T[] _items
+    constexpr uintptr_t List_Size                = 0x18;   // int _size
     
     constexpr uintptr_t Player_Rotation          = 0x614; 
     constexpr uintptr_t Player_HeadTF            = 0x6A0;
