@@ -47,6 +47,8 @@ bool update_camera(int drv_fd, uint32_t pid, uint64_t base, uint64_t match_hint)
     if (!native) return false;
 
     rt_read(drv_fd, pid, native + Camera_Matrix, g_mvp, sizeof(g_mvp));
+    ff::g_dbg.dbg_mvp11 = g_mvp[11];
+    ff::g_dbg.dbg_mvp15 = g_mvp[15];
     g_cam_ok = true;
     return true;
 }

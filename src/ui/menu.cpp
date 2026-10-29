@@ -400,6 +400,27 @@ namespace ui::menu {
             row("CamObj:    ", d.cam_obj);
             row("CamFollow: ", d.cam_follow);
             row("CamNative: ", d.cam_native);
+            sep();
+            ImGui::TextDisabled("-- matrix / pos debug --");
+            ImGui::TextDisabled("mvp[11] (want ~-1.0)");
+            std::snprintf(buf, sizeof(buf), "%.4f", d.dbg_mvp11);
+            ImGui::TextColored(
+                (d.dbg_mvp11 < -0.9f && d.dbg_mvp11 > -1.1f)
+                    ? ImVec4(.2f,1.f,.4f,1.f) : ImVec4(1.f,.3f,.3f,1.f),
+                "%s", buf);
+            ImGui::TextDisabled("mvp[15] (want ~1.0)");
+            std::snprintf(buf, sizeof(buf), "%.4f", d.dbg_mvp15);
+            ImGui::TextColored(
+                (d.dbg_mvp15 > 0.9f && d.dbg_mvp15 < 1.1f)
+                    ? ImVec4(.2f,1.f,.4f,1.f) : ImVec4(1.f,.3f,.3f,1.f),
+                "%s", buf);
+            ImGui::TextDisabled("pos0 head (enemy 0)");
+            std::snprintf(buf, sizeof(buf), "%.1f %.1f %.1f",
+                d.dbg_pos0.x, d.dbg_pos0.y, d.dbg_pos0.z);
+            ImGui::TextColored(
+                (d.dbg_pos0.x != 0.f || d.dbg_pos0.y != 0.f || d.dbg_pos0.z != 0.f)
+                    ? ImVec4(.2f,1.f,.4f,1.f) : ImVec4(1.f,.3f,.3f,1.f),
+                "%s", buf);
             pop_bold();
         }
         end_section();

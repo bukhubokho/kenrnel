@@ -50,6 +50,10 @@ struct DbgChain {
     uint64_t cam_obj;
     uint64_t cam_follow;
     uint64_t cam_native;
+    // matrix / position debug — set each frame to diagnose ESP clustering
+    float    dbg_mvp11;   // g_mvp[11]: should be ≈ -1.0 for valid perspective VP
+    float    dbg_mvp15;   // g_mvp[15]: should be ≈  1.0
+    Vec3     dbg_pos0;    // head_pos of first found enemy (should be non-zero world pos)
 };
 extern DbgChain g_dbg;
 

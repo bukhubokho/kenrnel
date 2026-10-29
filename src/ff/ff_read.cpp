@@ -363,6 +363,7 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
         read_il2cpp_str(drv_fd, pid, name_str, p.name, sizeof(p.name));
 
         p.valid = true;
+        if (found == 0 && !p.is_local) g_dbg.dbg_pos0 = p.head_pos;
         found++;
     }
     g_dbg.players_found = found;
