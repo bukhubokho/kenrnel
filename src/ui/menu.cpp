@@ -390,23 +390,18 @@ namespace ui::menu {
         }
 
         // ── X close button — right side of title ─────────────────────────────
-        const float  BtnR  = 14.f;
-        const float  BtnD  = BtnR * 2.f;
-        ImVec2 secPos      = ImGui::GetWindowPos();
+        const float  BtnD  = 28.f;
         ImVec2 secSz       = ImGui::GetWindowSize();
-        // place cursor: right edge minus padding minus button diameter
         float  bx = secSz.x - st.WindowPadding.x - BtnD - 4.f;
         float  by = (secSz.y - BtnD) * .5f;
         ImGui::SetCursorPos(ImVec2(bx, by));
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, BtnR);
-        ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(.70f,.10f,.10f,.90f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(.90f,.15f,.15f,1.f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(.55f,.05f,.05f,1.f));
-        ImGui::PushStyleColor(ImGuiCol_Text,          ImVec4(1.f,1.f,1.f,1.f));
-        if(ImGui::Button("  X  ##xclose", ImVec2(BtnD, BtnD)))
+        ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0,0,0,0));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1,1,1,.08f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(1,1,1,.15f));
+        ImGui::PushStyleColor(ImGuiCol_Text,          ImVec4(1.f,1.f,1.f,.85f));
+        if(ImGui::Button("X##xclose", ImVec2(BtnD, BtnD)))
             bar::g_open = false;
         ImGui::PopStyleColor(4);
-        ImGui::PopStyleVar();
 
         end_section();
     }
