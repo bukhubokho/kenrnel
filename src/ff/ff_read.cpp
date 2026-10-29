@@ -80,7 +80,9 @@ bool init(int drv_fd, uint32_t pid) {
 int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
     using namespace Offsets;
 
+    bool prev_rt_ok = g_dbg.rt_set_ok;
     g_dbg = {};
+    g_dbg.rt_set_ok = prev_rt_ok;
     if (drv_fd < 0 || pid == 0 || g_base == 0) return 0;
 
     // Sanity: read ELF magic at g_base to verify driver is reading correctly
