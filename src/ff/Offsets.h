@@ -16,12 +16,14 @@ namespace Offsets {
     constexpr uintptr_t Match_PlayerList         = 0x158;  // LMOIPODCHOL — List<Player>, likely all alive
     constexpr uintptr_t Match_PlayerList2        = 0x160;  // DPFFPGAFGDK — List<Player>, alt
     constexpr uintptr_t Match_LocalPlayer        = 0xD8;   // JMAGGLCNGIG.MHJCLOPOBAA — dump.cs 0xD8
-    // il2cpp Dictionary<K,V> internals
+    // il2cpp Dictionary<BEADLMGGGGL, Player> internals
+    // BEADLMGGGGL struct: uint(0x0) uint(0x4) byte(0x8) byte(0x9) ulong(0x10) = 0x18 bytes
+    // Entry: hashCode(0x0,4) next(0x4,4) key(0x8,0x18) Player*(0x20,8) → stride 0x28
     constexpr uintptr_t Dict_Entries             = 0x18;
     constexpr uintptr_t Dict_Count               = 0x20;
     constexpr uintptr_t Dict_ArrayHeader         = 0x20;
-    constexpr uintptr_t Dict_EntryStride         = 0x18;
-    constexpr uintptr_t Dict_EntryValue          = 0x10;
+    constexpr uintptr_t Dict_EntryStride         = 0x28;  // was 0x18 — wrong key size
+    constexpr uintptr_t Dict_EntryValue          = 0x20;  // was 0x10 — was inside key
     // il2cpp List<T> internals
     constexpr uintptr_t List_Items               = 0x10;   // T[] _items
     constexpr uintptr_t List_Size                = 0x18;   // int _size

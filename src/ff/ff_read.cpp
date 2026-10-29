@@ -42,13 +42,19 @@ static void read_il2cpp_str(int fd, uint32_t pid, uint64_t str_ptr, char* out, i
     out[len] = '\0';
 }
 
-// Read Unity Transform world position (offset 0x90 = cached world pos on OB55)
-static Vec3 read_transform_pos(int fd, uint32_t pid, uint64_t tf_ptr) {
+// ITransformNode (Player.BFOONIGAIFK) → Transform backing at +0x10
+// → managed Transform m_CachedPtr (native) at +0x10
+// → native C++ TransformInternal world pos at +0x90 (Unity 2021 ARM64)
+static Vec3 read_transform_pos(int fd, uint32_t pid, uint64_t itf_ptr) {
     Vec3 v{};
-    if (!tf_ptr) return v;
-    v.x = rd<float>(fd, pid, tf_ptr + 0x90);
-    v.y = rd<float>(fd, pid, tf_ptr + 0x94);
-    v.z = rd<float>(fd, pid, tf_ptr + 0x98);
+    if (!itf_ptr) return v;
+    uint64_t tf = rd<uint64_t>(fd, pid, itf_ptr + 0x10); // ITransformNode → managed Transform
+    if (!tf) return v;
+    uint64_t np = rd<uint64_t>(fd, pid, tf + 0x10);      // managed Transform → native ptr
+    if (!np) return v;
+    v.x = rd<float>(fd, pid, np + 0x90);
+    v.y = rd<float>(fd, pid, np + 0x94);
+    v.z = rd<float>(fd, pid, np + 0x98);
     return v;
 }
 
