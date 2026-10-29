@@ -535,10 +535,6 @@ namespace ui::menu {
 
         if(g_alpha<=0.01f) return;
 
-        ImGui::GetBackgroundDrawList()->AddRectFilled(
-            ImVec2(0,0),ImVec2(g_sw,g_sh),
-            IM_COL32(0,0,0,(int)(110*g_alpha)));
-
         ImGui::PushStyleVar(ImGuiStyleVar_Alpha,g_alpha);
         if(begin_window()){
             render_title();

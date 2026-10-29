@@ -14,7 +14,13 @@ namespace ff {
 
 uint64_t g_base = 0;
 DbgChain g_dbg  = {};
-static time_t s_last_scan = 0;
+static int64_t s_last_scan_ms = 0;
+
+static int64_t now_ms() {
+    struct timespec ts{};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 template<typename T>
@@ -92,11 +98,11 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
     // Refresh SET_PID every frame — some RTkernel builds expire the mm ref
     g_dbg.rt_set_ok = rt_set_pid_ok(drv_fd, pid, PACKAGE);
 
-    // Re-scan maps when g_base is missing or ELF magic fails, but rate-limit to once/sec
+    // Re-scan maps when g_base is missing or ELF magic fails, rate-limit to 300ms
     if (!g_base || rd<uint32_t>(drv_fd, pid, g_base) != 0x464C457F) {
-        time_t now = time(nullptr);
-        if (now != s_last_scan) {
-            s_last_scan = now;
+        int64_t now = now_ms();
+        if (now - s_last_scan_ms >= 300) {
+            s_last_scan_ms = now;
             uint64_t candidates[16];
             int n = find_il2cpp_candidates(pid, candidates, 16);
             for (int i = 0; i < n; i++) {
@@ -137,6 +143,7 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
 
     uint64_t local_player = rd<uint64_t>(drv_fd, pid, match + Match_LocalPlayer);
     g_dbg.local_player = local_player;
+    if (!local_player) return 0;  // can't identify self — skip to avoid drawing on own player
 
     // Player dictionary
     uint64_t dict = rd<uint64_t>(drv_fd, pid, match + Match_PlayerDict);
