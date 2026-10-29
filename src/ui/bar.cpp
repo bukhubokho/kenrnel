@@ -45,7 +45,7 @@ namespace ui::bar {
                 ImGuiWindowFlags_NoTitleBar   | ImGuiWindowFlags_NoDecoration  |
                 ImGuiWindowFlags_NoScrollbar  | ImGuiWindowFlags_NoSavedSettings |
                 ImGuiWindowFlags_NoMove       | ImGuiWindowFlags_NoResize       |
-                ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoBringToDisplayFrontOnFocus);
+                ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
             ImGui::InvisibleButton("##fbd", {D, D});
             if (ImGui::IsItemActive() && ImGui::IsMouseDragging(0, 2.f)) {
