@@ -2,6 +2,7 @@
 // Draws ESP overlays: 2D box, name, HP bar, snap line, distance.
 // All drawing via ImDrawList — no OpenGL calls.
 #include "esp_draw.hpp"
+#include "ff_read.hpp"
 #include "Offsets.h"
 #include "../driver/driver.h"
 #include <cmath>
@@ -29,12 +30,14 @@ bool update_camera(int drv_fd, uint32_t pid, uint64_t base) {
     uint64_t local = rt_read_t<uint64_t>(drv_fd, pid, match + Match_LocalPlayer);
     if (!local) return false;
 
-    // Camera chain: local_player + Player_Camera → cam_obj + Camera_Follow → follow + Camera_IntPtr → native + Camera_Matrix
     uint64_t cam_obj = rt_read_t<uint64_t>(drv_fd, pid, local + Player_Camera);
+    ff::g_dbg.cam_obj = cam_obj;
     if (!cam_obj) return false;
     uint64_t follow  = rt_read_t<uint64_t>(drv_fd, pid, cam_obj + Camera_Follow);
+    ff::g_dbg.cam_follow = follow;
     if (!follow) return false;
     uint64_t native  = rt_read_t<uint64_t>(drv_fd, pid, follow + Camera_IntPtr);
+    ff::g_dbg.cam_native = native;
     if (!native) return false;
 
     rt_read(drv_fd, pid, native + Camera_Matrix, g_mvp, sizeof(g_mvp));

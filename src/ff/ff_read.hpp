@@ -41,9 +41,11 @@ struct DbgChain {
     int32_t  dict_count;
     int32_t  players_found;
     bool     match_running;
-    bool     rt_set_ok;      // rt_set_pid succeeded
-    // scan: 8 pointers at g_base+GameFacade-0x10 step +0x8
-    uint64_t scan[8];
+    bool     rt_set_ok;
+    // camera chain debug
+    uint64_t cam_obj;
+    uint64_t cam_follow;
+    uint64_t cam_native;
 };
 extern DbgChain g_dbg;
 
