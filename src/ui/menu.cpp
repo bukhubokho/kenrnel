@@ -345,8 +345,8 @@ namespace ui::menu {
             if (g_ff_pid > 0) {
                 char buf[64];
                 std::snprintf(buf, sizeof(buf), "%d", g_ff_pid);
-                ImGui::TextColored(ImVec4(.2f,1.f,.4f,1.f), buf);
-                ImGui::TextColored(ImVec4(.5f,.9f,.5f,1.f), "Process found");
+                ImGui::TextColored(ImVec4(.2f,1.f,.4f,1.f), "%s", buf);
+                ImGui::TextColored(ImVec4(.5f,.9f,.5f,1.f), "%s", "Process found");
             } else {
                 ImGui::TextColored(ImVec4(1.f,.3f,.3f,1.f), "0");
                 ImGui::TextColored(ImVec4(1.f,.5f,.5f,1.f), "Not running");
