@@ -172,7 +172,8 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
         p.is_dead  = rd<uint8_t>(drv_fd, pid, player + Player_IsDead) != 0;
         if (p.is_dead) continue;
 
-        p.is_local = (player == local_player);
+        // FollowCamera only exists on the local player — more reliable than ptr comparison
+        p.is_local = (rd<uint64_t>(drv_fd, pid, player + Player_Camera) != 0);
         p.is_bot   = rd<uint8_t>(drv_fd, pid, player + Player_IsBot) != 0;
 
         // HP — chain: player+Player_HP → PRIDataPool → m_Datas(+HP_List) → entry[0](+HP_Entry) → Value(+HP_Value)
