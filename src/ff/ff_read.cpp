@@ -43,10 +43,34 @@ static Vec3 read_transform_pos(int fd, uint32_t pid, uint64_t tf_ptr) {
     return v;
 }
 
+// ── Find libil2cpp.so base from /proc/<pid>/maps ──────────────────────────────
+static uint64_t find_il2cpp_base(uint32_t pid) {
+    char path[64];
+    snprintf(path, sizeof(path), "/proc/%u/maps", pid);
+    FILE* f = fopen(path, "r");
+    if (!f) return 0;
+
+    char line[256];
+    uint64_t base = 0;
+    while (fgets(line, sizeof(line), f)) {
+        if (strstr(line, "libil2cpp.so") && strstr(line, "r-xp")) {
+            base = (uint64_t)strtoull(line, nullptr, 16);
+            break;
+        }
+    }
+    fclose(f);
+    return base;
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 bool init(int drv_fd, uint32_t pid) {
     if (drv_fd < 0 || pid == 0) return false;
-    uint64_t base = rt_set_pid(drv_fd, pid, PACKAGE);
+
+    // Register PID with driver (needed for rt_read to work)
+    rt_set_pid(drv_fd, pid, PACKAGE);
+
+    // Get libil2cpp.so base from /proc/maps
+    uint64_t base = find_il2cpp_base(pid);
     if (!base) return false;
     g_base = base;
     return true;
