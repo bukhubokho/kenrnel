@@ -90,8 +90,8 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
     // Refresh SET_PID every frame — some RTkernel builds expire the mm ref
     g_dbg.rt_set_ok = rt_set_pid_ok(drv_fd, pid, PACKAGE);
 
-    // libil2cpp.so has multiple mappings — find the one with ELF header
-    {
+    // Only re-scan maps when g_base is missing or ELF magic fails
+    if (!g_base || rd<uint32_t>(drv_fd, pid, g_base) != 0x464C457F) {
         uint64_t candidates[16];
         int n = find_il2cpp_candidates(pid, candidates, 16);
         for (int i = 0; i < n; i++) {
