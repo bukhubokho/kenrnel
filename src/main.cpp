@@ -70,8 +70,8 @@ int main() {
             if (pid) ff::init(drv_fd, pid);
         }
         if (pid && ff::g_base) {
-            esp::update_camera(drv_fd, pid, ff::g_base);
             s_player_count = ff::update(drv_fd, pid, s_players);
+            esp::update_camera(drv_fd, pid, ff::g_base);
         }
 
         // ── ESP — drawn behind menu ───────────────────────────────────────────
