@@ -1,9 +1,6 @@
 #pragma once
 #include <cstdint>
 
-#pragma once
-#include <cstdint>
-
 namespace Offsets {
     constexpr uintptr_t GameFacade               = 0xAC1E768;
     constexpr uintptr_t GameFacade_SF            = 0xB8;   // Il2CppClass → static_fields*
@@ -42,7 +39,7 @@ namespace Offsets {
     constexpr uintptr_t Uma_Visible              = 0x101;
     constexpr uintptr_t Uma_Data                 = 0x28;
     constexpr uintptr_t UmaData_Skip             = 0x91;
-    constexpr uintptr_t Camera_Follow            = 0x28;
+    constexpr uintptr_t Camera_Follow            = 0x30;  // CameraControllerBase.AFMGCAELKBD (UnityEngine.Camera)
     constexpr uintptr_t Camera_IntPtr            = 0x10;
     constexpr uintptr_t Camera_Matrix            = 0x100;
     constexpr uintptr_t HP_List                  = 0x10;
