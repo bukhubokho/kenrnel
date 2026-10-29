@@ -30,14 +30,17 @@ extern uint64_t g_base;
 
 // Debug — last seen pointer values, for the debug tab
 struct DbgChain {
+    uint64_t gf_read_addr;   // g_base + GameFacade offset (address we read)
     uint64_t gf_static;
-    uint64_t base_game;
+    uint64_t base_game;      // static_fields*  (gf_static + 0xB8)
+    uint64_t match_game;     // CurrentMatchGame (static_fields + 0x8)
     uint64_t match;
     uint64_t local_player;
     uint64_t dict;
     int32_t  dict_count;
     int32_t  players_found;
     bool     match_running;
+    bool     rt_set_ok;      // rt_set_pid succeeded
 };
 extern DbgChain g_dbg;
 

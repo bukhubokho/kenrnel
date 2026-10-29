@@ -6,8 +6,10 @@
 
 namespace Offsets {
     constexpr uintptr_t GameFacade               = 0xAC1E768;
-    constexpr uintptr_t GameFacade_P2            = 0xB8;
-    constexpr uintptr_t BaseGame_Match           = 0x90;
+    constexpr uintptr_t GameFacade_SF            = 0xB8;   // Il2CppClass → static_fields*
+    constexpr uintptr_t GameFacade_MatchGame     = 0x8;    // static_fields + 0x8 = CurrentMatchGame
+    constexpr uintptr_t GameFacade_P2            = 0xB8;   // kept for compat
+    constexpr uintptr_t BaseGame_Match           = 0x90;   // MatchGame.m_Match
     constexpr uintptr_t BaseGame_Timer           = 0x20;
     constexpr uintptr_t Timer_Delta              = 0x2C;
     constexpr uintptr_t MatchIsRunning           = 0xCC;

@@ -363,8 +363,10 @@ namespace ui::menu {
                 std::snprintf(buf, sizeof(buf), "0x%llX", (unsigned long long)val);
                 ImGui::TextColored(val ? ImVec4(.6f,1.f,.6f,1.f) : ImVec4(1.f,.4f,.4f,1.f), "%s", buf);
             };
-            row("GameFacade:", d.gf_static);
-            row("BaseGame:  ", d.base_game);
+            row("ReadAddr:  ", d.gf_read_addr);
+            row("Il2Klass:  ", d.gf_static);
+            row("StaticFlds:", d.base_game);
+            row("MatchGame: ", d.match_game);
             row("Match:     ", d.match);
             row("LocalPlayer:", d.local_player);
             row("Dict:      ", d.dict);

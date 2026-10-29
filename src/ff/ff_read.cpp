@@ -84,16 +84,24 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
     g_dbg = {};
     if (drv_fd < 0 || pid == 0 || g_base == 0) return 0;
 
-    // GameFacade static field ptr
+    // GameFacade: read Il2CppClass* from g_base + GameFacade RVA
+    g_dbg.gf_read_addr = g_base + GameFacade;
     uint64_t gf_static = rd<uint64_t>(drv_fd, pid, g_base + GameFacade);
     g_dbg.gf_static = gf_static;
     if (!gf_static) return 0;
 
-    uint64_t base_game = rd<uint64_t>(drv_fd, pid, gf_static + GameFacade_P2);
+    // Il2CppClass* + 0xB8 = static_fields*
+    uint64_t base_game = rd<uint64_t>(drv_fd, pid, gf_static + GameFacade_SF);
     g_dbg.base_game = base_game;
     if (!base_game) return 0;
 
-    uint64_t match = rd<uint64_t>(drv_fd, pid, base_game + BaseGame_Match);
+    // static_fields + 0x8 = CurrentMatchGame (MatchGame*)
+    uint64_t match_game = rd<uint64_t>(drv_fd, pid, base_game + GameFacade_MatchGame);
+    g_dbg.match_game = match_game;
+    if (!match_game) return 0;
+
+    // MatchGame + 0x90 = m_Match
+    uint64_t match = rd<uint64_t>(drv_fd, pid, match_game + BaseGame_Match);
     g_dbg.match = match;
     if (!match) return 0;
 
