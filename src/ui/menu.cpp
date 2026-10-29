@@ -371,6 +371,14 @@ namespace ui::menu {
             ImGui::TextColored(d.elf_magic == 0x464C457F ? ImVec4(.2f,1.f,.4f,1.f) : ImVec4(1.f,.3f,.3f,1.f), "%s", buf);
             sep();
             row("ReadAddr:  ", d.gf_read_addr);
+            // Scan: show 8 slots around GameFacade offset (offset -0x10..+0x28)
+            ImGui::TextDisabled("-- scan @RVA-0x10 --");
+            for (int i = 0; i < 8; i++) {
+                std::snprintf(buf, sizeof(buf), "[%+d] 0x%llX",
+                    (i * 8) - 0x10, (unsigned long long)d.scan[i]);
+                ImGui::TextColored(d.scan[i] ? ImVec4(.6f,1.f,.6f,1.f) : ImVec4(.5f,.5f,.5f,1.f), "%s", buf);
+            }
+            ImGui::TextDisabled("--");
             row("Il2Klass:  ", d.gf_static);
             row("StaticFlds:", d.base_game);
             row("MatchGame: ", d.match_game);

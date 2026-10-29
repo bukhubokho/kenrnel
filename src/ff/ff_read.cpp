@@ -95,6 +95,10 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
     g_dbg.elf_magic    = rd<uint32_t>(drv_fd, pid, g_base);
     g_dbg.gf_read_addr = g_base + GameFacade;
 
+    // Scan 8 x uint64 around GameFacade offset to find non-zero TypeInfo
+    for (int i = 0; i < 8; i++)
+        g_dbg.scan[i] = rd<uint64_t>(drv_fd, pid, g_base + GameFacade - 0x10 + (uint64_t)i * 8);
+
     // Step 1: read Il2CppClass* (TypeInfo) from g_base + GameFacade RVA
     uint64_t gf_static = rd<uint64_t>(drv_fd, pid, g_base + GameFacade);
     g_dbg.gf_static = gf_static;

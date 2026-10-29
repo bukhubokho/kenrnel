@@ -42,6 +42,8 @@ struct DbgChain {
     int32_t  players_found;
     bool     match_running;
     bool     rt_set_ok;      // rt_set_pid succeeded
+    // scan: 8 pointers at g_base+GameFacade-0x10 step +0x8
+    uint64_t scan[8];
 };
 extern DbgChain g_dbg;
 
