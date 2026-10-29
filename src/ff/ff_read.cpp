@@ -7,6 +7,7 @@
 #include "ff_pid.hpp"
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 
 namespace ff {
 
