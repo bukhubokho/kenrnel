@@ -143,7 +143,6 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
 
     uint64_t local_player = rd<uint64_t>(drv_fd, pid, match + Match_LocalPlayer);
     g_dbg.local_player = local_player;
-    if (!local_player) return 0;  // can't identify self — skip to avoid drawing on own player
 
     // Player dictionary
     uint64_t dict = rd<uint64_t>(drv_fd, pid, match + Match_PlayerDict);
