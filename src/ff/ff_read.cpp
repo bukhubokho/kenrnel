@@ -1,0 +1,132 @@
+// language: C++17, target: Android arm64
+// Reads Free Fire entity list via RTkernel driver (ring-0, no injection).
+// All pointer chains are OB55 offsets from Offsets.h.
+#include "ff_read.hpp"
+#include "Offsets.h"
+#include "../driver/driver.h"
+#include "ff_pid.hpp"
+#include <cstdio>
+#include <cstring>
+
+namespace ff {
+
+uint64_t g_base = 0;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+template<typename T>
+static inline T rd(int fd, uint32_t pid, uint64_t addr) {
+    return rt_read_t<T>(fd, pid, addr);
+}
+
+// Read UTF-16 il2cpp string → ASCII (first 31 chars)
+static void read_il2cpp_str(int fd, uint32_t pid, uint64_t str_ptr, char* out, int max) {
+    out[0] = '\0';
+    if (!str_ptr) return;
+    int32_t len = rd<int32_t>(fd, pid, str_ptr + 0x10);
+    if (len <= 0 || len > 64) return;
+    if (len >= max) len = max - 1;
+    uint16_t wbuf[64] = {};
+    rt_read(fd, pid, str_ptr + 0x14, wbuf, (size_t)len * 2);
+    for (int i = 0; i < len; i++)
+        out[i] = (char)(wbuf[i] & 0x7F);
+    out[len] = '\0';
+}
+
+// Read Unity Transform world position (offset 0x90 = cached world pos on OB55)
+static Vec3 read_transform_pos(int fd, uint32_t pid, uint64_t tf_ptr) {
+    Vec3 v{};
+    if (!tf_ptr) return v;
+    v.x = rd<float>(fd, pid, tf_ptr + 0x90);
+    v.y = rd<float>(fd, pid, tf_ptr + 0x94);
+    v.z = rd<float>(fd, pid, tf_ptr + 0x98);
+    return v;
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+bool init(int drv_fd, uint32_t pid) {
+    if (drv_fd < 0 || pid == 0) return false;
+    uint64_t base = rt_set_pid(drv_fd, pid, PACKAGE);
+    if (!base) return false;
+    g_base = base;
+    return true;
+}
+
+// ── Update — walk entity dict each frame ─────────────────────────────────────
+int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
+    using namespace Offsets;
+
+    if (drv_fd < 0 || pid == 0 || g_base == 0) return 0;
+
+    // GameFacade static field ptr
+    uint64_t gf_static = rd<uint64_t>(drv_fd, pid, g_base + GameFacade);
+    if (!gf_static) return 0;
+
+    uint64_t base_game = rd<uint64_t>(drv_fd, pid, gf_static + GameFacade_P2);
+    if (!base_game) return 0;
+
+    uint64_t match = rd<uint64_t>(drv_fd, pid, base_game + BaseGame_Match);
+    if (!match) return 0;
+
+    // Check match running
+    uint8_t running = rd<uint8_t>(drv_fd, pid, match + MatchIsRunning);
+    if (!running) return 0;
+
+    uint64_t local_player = rd<uint64_t>(drv_fd, pid, match + Match_LocalPlayer);
+
+    // Player dictionary
+    uint64_t dict = rd<uint64_t>(drv_fd, pid, match + Match_PlayerDict);
+    if (!dict) return 0;
+
+    uint64_t entries_arr = rd<uint64_t>(drv_fd, pid, dict + Dict_Entries);
+    if (!entries_arr) return 0;
+
+    int32_t count = rd<int32_t>(drv_fd, pid, dict + Dict_Count);
+    if (count <= 0 || count > MAX_PLAYERS) return 0;
+
+    // entries data starts after il2cpp array header (Dict_ArrayHeader = 0x20)
+    uint64_t data = entries_arr + Dict_ArrayHeader;
+
+    int found = 0;
+    for (int i = 0; i < count && found < MAX_PLAYERS; i++) {
+        uint64_t entry_base = data + (uint64_t)i * Dict_EntryStride;
+        uint64_t player     = rd<uint64_t>(drv_fd, pid, entry_base + Dict_EntryValue);
+        if (!player) continue;
+
+        PlayerInfo& p = players[found];
+        memset(&p, 0, sizeof(p));
+
+        p.is_dead  = rd<uint8_t>(drv_fd, pid, player + Player_IsDead) != 0;
+        if (p.is_dead) continue;
+
+        p.is_local = (player == local_player);
+        p.is_bot   = rd<uint8_t>(drv_fd, pid, player + Player_IsBot) != 0;
+
+        // HP — chain: player + Player_HP → list ptr → entry → value
+        uint64_t hp_list = rd<uint64_t>(drv_fd, pid, player + Player_HP);
+        if (hp_list) {
+            uint64_t hp_entry = rd<uint64_t>(drv_fd, pid, hp_list + HP_Entry);
+            if (hp_entry) {
+                p.hp = rd<float>(drv_fd, pid, hp_entry + HP_Value);
+            }
+        }
+        if (p.hp <= 0.f) continue;
+
+        // Positions
+        uint64_t head_tf = rd<uint64_t>(drv_fd, pid, player + Player_HeadTF);
+        uint64_t foot_tf = rd<uint64_t>(drv_fd, pid, player + Player_FootTF);
+        p.head_pos = read_transform_pos(drv_fd, pid, head_tf);
+        p.foot_pos = read_transform_pos(drv_fd, pid, foot_tf);
+
+        if (p.head_pos.x == 0.f && p.head_pos.y == 0.f) continue;
+
+        // Name
+        uint64_t name_str = rd<uint64_t>(drv_fd, pid, player + Player_Name);
+        read_il2cpp_str(drv_fd, pid, name_str, p.name, sizeof(p.name));
+
+        p.valid = true;
+        found++;
+    }
+    return found;
+}
+
+} // namespace ff

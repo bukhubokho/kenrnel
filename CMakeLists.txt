@@ -24,6 +24,8 @@ set(SOURCES
     src/ui/screenshot.cpp
     src/ui/menu_inflex.cpp
     src/ff/ff_pid.cpp
+    src/ff/ff_read.cpp
+    src/ff/esp_draw.cpp
     src/ui/widgets/widgets.cpp
     src/protect/oxorany.cpp
 )
