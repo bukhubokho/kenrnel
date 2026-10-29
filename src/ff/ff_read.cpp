@@ -67,8 +67,8 @@ static uint64_t find_il2cpp_base(uint32_t pid) {
 bool init(int drv_fd, uint32_t pid) {
     if (drv_fd < 0 || pid == 0) return false;
 
+    g_dbg.rt_set_ok = rt_set_pid_ok(drv_fd, pid, PACKAGE);
     uint64_t drv_base = rt_set_pid(drv_fd, pid, PACKAGE);
-    g_dbg.rt_set_ok = (drv_base != 0);
 
     uint64_t base = find_il2cpp_base(pid);
     if (!base) return false;

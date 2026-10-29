@@ -13,8 +13,8 @@ namespace Offsets {
     constexpr uintptr_t BaseGame_Timer           = 0x20;
     constexpr uintptr_t Timer_Delta              = 0x2C;
     constexpr uintptr_t MatchIsRunning           = 0xCC;
-    constexpr uintptr_t Match_PlayerDict         = 0xC0;
-    constexpr uintptr_t Match_LocalPlayer        = 0xD8;
+    constexpr uintptr_t Match_PlayerDict         = 0x128;  // JMAGGLCNGIG.NOLEDCGOJKC — dump.cs confirmed
+    constexpr uintptr_t Match_LocalPlayer        = 0xD8;   // JMAGGLCNGIG.MHJCLOPOBAA — dump.cs 0xD8
     constexpr uintptr_t Dict_Entries             = 0x18;
     constexpr uintptr_t Dict_Count               = 0x20;
     constexpr uintptr_t Dict_ArrayHeader         = 0x20;

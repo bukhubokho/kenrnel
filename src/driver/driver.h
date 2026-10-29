@@ -33,6 +33,9 @@ void rt_close(int fd);
 // name = "com.dts.freefireth", returns base address or 0 on fail
 uint64_t rt_set_pid(int fd, uint32_t pid, const char* name);
 
+// Same but returns true if ioctl succeeded (base may still be 0)
+bool rt_set_pid_ok(int fd, uint32_t pid, const char* name);
+
 // Read size bytes from target process at addr into buf
 bool rt_read(int fd, uint32_t pid, uint64_t addr, void* buf, size_t size);
 
