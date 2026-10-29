@@ -382,6 +382,9 @@ namespace ui::menu {
             ImGui::TextDisabled("Match running");
             ImGui::TextColored(d.match_running ? ImVec4(.2f,1.f,.4f,1.f) : ImVec4(1.f,.4f,.4f,1.f),
                 "%s", d.match_running ? "YES" : "NO");
+            ImGui::TextDisabled("Match src");
+            ImGui::TextColored(d.used_heap_scan ? ImVec4(1.f,.8f,.2f,1.f) : ImVec4(.2f,1.f,.4f,1.f),
+                "%s", d.used_heap_scan ? "HEAP SCAN" : "TypeInfo");
             ImGui::TextDisabled("D0x128 D0x130 L0x158 L0x160");
             std::snprintf(buf, sizeof(buf), "%d  %d  %d  %d",
                 d.dict_count, d.dict_all_count, d.list_count, d.list2_count);

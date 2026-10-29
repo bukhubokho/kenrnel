@@ -45,6 +45,7 @@ struct DbgChain {
     int32_t  players_found;
     bool     match_running;
     bool     rt_set_ok;
+    bool     used_heap_scan;  // true when match found via heap scan (TypeInfo chain was 0)
     // camera chain debug
     uint64_t cam_obj;
     uint64_t cam_follow;
