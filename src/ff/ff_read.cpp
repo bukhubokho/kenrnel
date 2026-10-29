@@ -8,11 +8,13 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <ctime>
 
 namespace ff {
 
 uint64_t g_base = 0;
 DbgChain g_dbg  = {};
+static time_t s_last_scan = 0;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 template<typename T>
@@ -90,13 +92,17 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
     // Refresh SET_PID every frame — some RTkernel builds expire the mm ref
     g_dbg.rt_set_ok = rt_set_pid_ok(drv_fd, pid, PACKAGE);
 
-    // Only re-scan maps when g_base is missing or ELF magic fails
+    // Re-scan maps when g_base is missing or ELF magic fails, but rate-limit to once/sec
     if (!g_base || rd<uint32_t>(drv_fd, pid, g_base) != 0x464C457F) {
-        uint64_t candidates[16];
-        int n = find_il2cpp_candidates(pid, candidates, 16);
-        for (int i = 0; i < n; i++) {
-            uint32_t magic = rd<uint32_t>(drv_fd, pid, candidates[i]);
-            if (magic == 0x464C457F) { g_base = candidates[i]; break; }
+        time_t now = time(nullptr);
+        if (now != s_last_scan) {
+            s_last_scan = now;
+            uint64_t candidates[16];
+            int n = find_il2cpp_candidates(pid, candidates, 16);
+            for (int i = 0; i < n; i++) {
+                uint32_t magic = rd<uint32_t>(drv_fd, pid, candidates[i]);
+                if (magic == 0x464C457F) { g_base = candidates[i]; break; }
+            }
         }
     }
     if (!g_base) return 0;
