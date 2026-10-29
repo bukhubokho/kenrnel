@@ -11,7 +11,7 @@ namespace esp {
 
 // ── Camera matrix (column-major 4x4 view-projection) ─────────────────────────
 static float g_mvp[16] = {};
-static bool  g_cam_ok  = false;
+bool  g_cam_ok  = false;
 
 bool update_camera(int drv_fd, uint32_t pid, uint64_t base) {
     using namespace Offsets;
