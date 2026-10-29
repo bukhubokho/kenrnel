@@ -26,6 +26,22 @@ static bool probe_fd(int fd) {
 }
 
 int rt_open() {
+    // Try known RTkernel device names first — avoids full /dev/ scan
+    static const char* known[] = {
+        "/dev/rt0", "/dev/rtk", "/dev/RTK", "/dev/rwMem",
+        "/dev/kmem_ext", "/dev/kgsl-3d0", "/dev/5.10",
+        nullptr
+    };
+    for (int i = 0; known[i]; i++) {
+        int fd = open(known[i], O_RDWR | O_NONBLOCK);
+        if (fd < 0) continue;
+        if (probe_fd(fd)) {
+            fprintf(stderr, "[DRV] found RTkernel at %s\n", known[i]);
+            return fd;
+        }
+        close(fd);
+    }
+
     DIR* d = opendir("/dev");
     if (!d) return -1;
 
