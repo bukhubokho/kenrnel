@@ -54,9 +54,9 @@ static uint64_t find_il2cpp_base(uint32_t pid) {
     char line[256];
     uint64_t base = 0;
     while (fgets(line, sizeof(line), f)) {
-        if (strstr(line, "libil2cpp.so") && strstr(line, "r-xp")) {
-            base = (uint64_t)strtoull(line, nullptr, 16);
-            break;
+        if (strstr(line, "libil2cpp.so")) {
+            uint64_t addr = (uint64_t)strtoull(line, nullptr, 16);
+            if (base == 0 || addr < base) base = addr;
         }
     }
     fclose(f);
