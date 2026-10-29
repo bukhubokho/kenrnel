@@ -52,16 +52,13 @@ static void read_il2cpp_str(int fd, uint32_t pid, uint64_t str_ptr, char* out, i
     out[len] = '\0';
 }
 
-// ITransformNode (Player.BFOONIGAIFK) → Transform backing at +0x10
-// → managed Transform m_CachedPtr (native) at +0x10
-// → native C++ TransformInternal world pos at +0x90 (Unity 2021 ARM64)
-static Vec3 read_transform_pos(int fd, uint32_t pid, uint64_t itf_ptr) {
+// Player bone fields store managed Transform* directly (IL2CPP MonoBehaviour component).
+// Chain: managed Transform → m_CachedPtr (+0x10) → native TransformInternal → world pos (+0x90)
+static Vec3 read_transform_pos(int fd, uint32_t pid, uint64_t managed_tf) {
     Vec3 v{};
-    if (!itf_ptr) return v;
-    uint64_t tf = rd<uint64_t>(fd, pid, itf_ptr + 0x10); // ITransformNode → managed Transform
-    if (!tf) return v;
-    uint64_t np = rd<uint64_t>(fd, pid, tf + 0x10);      // managed Transform → native ptr
-    if (!np) return v;
+    if (!managed_tf || managed_tf < 0x100000) return v;
+    uint64_t np = rd<uint64_t>(fd, pid, managed_tf + 0x10); // m_CachedPtr → native
+    if (!np || np < 0x100000) return v;
     v.x = rd<float>(fd, pid, np + 0x90);
     v.y = rd<float>(fd, pid, np + 0x94);
     v.z = rd<float>(fd, pid, np + 0x98);
@@ -103,10 +100,10 @@ static void refresh_heap_ranges(uint32_t pid) {
 static uint64_t heap_scan_for_match(int fd, uint32_t pid) {
     using namespace Offsets;
 
-    // Validate cached
+    // Validate cached — confirm LocalPlayer pointer still looks valid
     if (s_heap_match) {
-        uint8_t run = rd<uint8_t>(fd, pid, s_heap_match + MatchIsRunning);
-        if (run == 1) return s_heap_match;
+        uint64_t lp = rd<uint64_t>(fd, pid, s_heap_match + Match_LocalPlayer);
+        if (lp >= 0x100000 && !(lp & 7)) return s_heap_match;
         s_heap_match = 0;
         s_heap_ri    = 0;
         s_heap_off   = 0;
@@ -148,9 +145,6 @@ static uint64_t heap_scan_for_match(int fd, uint32_t pid) {
         // One bulk read covering offsets 0..0x13F
         if (!rt_read(fd, pid, candidate, blk, sizeof(blk))) continue;
 
-        // MatchIsRunning at 0xCC
-        if (blk[MatchIsRunning] != 1) continue;
-
         // LocalPlayer at 0xD8 — must be heap-aligned pointer
         uint64_t lp = 0;
         __builtin_memcpy(&lp, blk + Match_LocalPlayer, 8);
@@ -161,9 +155,9 @@ static uint64_t heap_scan_for_match(int fd, uint32_t pid) {
         __builtin_memcpy(&dict, blk + Match_PlayerDict, 8);
         if (dict < 0x100000 || (dict & 7)) continue;
 
-        // Dict count sanity (one extra read)
+        // Dict count sanity — allow 0 during lobby (players not spawned yet)
         int32_t cnt = rd<int32_t>(fd, pid, dict + Dict_Count);
-        if (cnt <= 0 || cnt > MAX_PLAYERS) continue;
+        if (cnt < 0 || cnt > MAX_PLAYERS) continue;
 
         s_heap_match = candidate;
         return s_heap_match;

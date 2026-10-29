@@ -14,19 +14,25 @@ namespace esp {
 static float g_mvp[16] = {};
 bool  g_cam_ok  = false;
 
-bool update_camera(int drv_fd, uint32_t pid, uint64_t base) {
+bool update_camera(int drv_fd, uint32_t pid, uint64_t base, uint64_t match_hint) {
     using namespace Offsets;
     g_cam_ok = false;
-    if (drv_fd < 0 || pid == 0 || base == 0) return false;
+    if (drv_fd < 0 || pid == 0) return false;
 
-    uint64_t gf_static  = rt_read_t<uint64_t>(drv_fd, pid, base + GameFacade);
-    if (!gf_static) return false;
-    uint64_t sf         = rt_read_t<uint64_t>(drv_fd, pid, gf_static + GameFacade_SF);
-    if (!sf) return false;
-    uint64_t match_game = rt_read_t<uint64_t>(drv_fd, pid, sf + GameFacade_MatchGame);
-    if (!match_game) return false;
-    uint64_t match      = rt_read_t<uint64_t>(drv_fd, pid, match_game + BaseGame_Match);
+    uint64_t match = match_hint;
+    if (!match) {
+        // TypeInfo path — only when heap scan hasn't found the match yet
+        if (!base) return false;
+        uint64_t gf_static = rt_read_t<uint64_t>(drv_fd, pid, base + GameFacade);
+        if (!gf_static) return false;
+        uint64_t sf        = rt_read_t<uint64_t>(drv_fd, pid, gf_static + GameFacade_SF);
+        if (!sf) return false;
+        uint64_t mg        = rt_read_t<uint64_t>(drv_fd, pid, sf + GameFacade_MatchGame);
+        if (!mg) return false;
+        match              = rt_read_t<uint64_t>(drv_fd, pid, mg + BaseGame_Match);
+    }
     if (!match) return false;
+
     uint64_t local = rt_read_t<uint64_t>(drv_fd, pid, match + Match_LocalPlayer);
     if (!local) return false;
 
