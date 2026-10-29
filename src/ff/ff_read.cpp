@@ -81,10 +81,15 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
     using namespace Offsets;
 
     g_dbg = {};
-    if (drv_fd < 0 || pid == 0 || g_base == 0) return 0;
+    if (drv_fd < 0 || pid == 0) return 0;
 
     // Refresh SET_PID every frame — some RTkernel builds expire the mm ref
     g_dbg.rt_set_ok = rt_set_pid_ok(drv_fd, pid, PACKAGE);
+
+    // libil2cpp.so can remap after full game load — re-read base each frame
+    uint64_t fresh_base = find_il2cpp_base(pid);
+    if (fresh_base) g_base = fresh_base;
+    if (!g_base) return 0;
 
     // Sanity: read ELF magic at g_base to verify driver is reading correctly
     g_dbg.elf_magic    = rd<uint32_t>(drv_fd, pid, g_base);
