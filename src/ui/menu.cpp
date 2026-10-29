@@ -24,10 +24,11 @@ extern ImGuiWindow* g_window;
 
 namespace ui::menu {
 
-    static bool  g_style_init  = false;
-    static int   g_tab         = 0;
-    static float g_alpha       = 0.f;
-    static bool  g_menu_open   = false;
+    static bool    g_style_init  = false;
+    static int     g_tab         = 0;
+    static float   g_alpha       = 0.f;
+    static bool    g_menu_open   = false;
+    static int32_t g_ff_pid      = 0;   // updated every frame via ff::get_pid()
 
     static Watermark watermark;
 
@@ -340,11 +341,10 @@ namespace ui::menu {
 
         if (begin_section("game process", cs, true)) {
             push_bold();
-            int32_t pid = ff::get_pid();
             ImGui::TextDisabled("Free Fire PID");
-            if (pid > 0) {
+            if (g_ff_pid > 0) {
                 char buf[64];
-                std::snprintf(buf, sizeof(buf), "%d", pid);
+                std::snprintf(buf, sizeof(buf), "%d", g_ff_pid);
                 ImGui::TextColored(ImVec4(.2f,1.f,.4f,1.f), buf);
                 ImGui::TextColored(ImVec4(.5f,.9f,.5f,1.f), "Process found");
             } else {
@@ -467,6 +467,9 @@ namespace ui::menu {
 
     void render() {
         if (Menu::cfg.exitRequested) return;
+
+        // Always scan — needed by kernel read regardless of active tab
+        g_ff_pid = ff::get_pid();
 
         bar::render();
 
