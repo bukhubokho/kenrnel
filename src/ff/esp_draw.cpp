@@ -121,7 +121,7 @@ void draw(ImDrawList* dl, const ff::PlayerInfo* players, int count,
 
         // ── Snap line ─────────────────────────────────────────────────────────
         if (cfg.snapline) {
-            dl->AddLine({sw*0.5f, sh}, {fx, fy},
+            dl->AddLine({sw*0.5f, 0.f}, {hx, hy},
                         to_col(cfg.snapLineColor), cfg.snapLineThick);
         }
 
@@ -143,7 +143,8 @@ void draw(ImDrawList* dl, const ff::PlayerInfo* players, int count,
     if (cfg.enemyCount && count > 0) {
         char buf[32];
         snprintf(buf, sizeof(buf), "Enemies: %d", count);
-        dl->AddText({8.f, 8.f}, to_col(cfg.enemyCountColor), buf);
+        ImVec2 ts = ImGui::CalcTextSize(buf);
+        dl->AddText({sw*0.5f - ts.x*0.5f, 8.f}, to_col(cfg.enemyCountColor), buf);
     }
 }
 
