@@ -28,4 +28,17 @@ int  update(int drv_fd, uint32_t pid, PlayerInfo* players);
 // Base address of libil2cpp.so in FF process (set by init)
 extern uint64_t g_base;
 
+// Debug — last seen pointer values, for the debug tab
+struct DbgChain {
+    uint64_t gf_static;
+    uint64_t base_game;
+    uint64_t match;
+    uint64_t local_player;
+    uint64_t dict;
+    int32_t  dict_count;
+    int32_t  players_found;
+    bool     match_running;
+};
+extern DbgChain g_dbg;
+
 } // namespace ff

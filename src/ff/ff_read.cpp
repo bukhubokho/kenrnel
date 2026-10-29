@@ -11,6 +11,7 @@
 namespace ff {
 
 uint64_t g_base = 0;
+DbgChain g_dbg  = {};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 template<typename T>
@@ -55,32 +56,40 @@ bool init(int drv_fd, uint32_t pid) {
 int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
     using namespace Offsets;
 
+    g_dbg = {};
     if (drv_fd < 0 || pid == 0 || g_base == 0) return 0;
 
     // GameFacade static field ptr
     uint64_t gf_static = rd<uint64_t>(drv_fd, pid, g_base + GameFacade);
+    g_dbg.gf_static = gf_static;
     if (!gf_static) return 0;
 
     uint64_t base_game = rd<uint64_t>(drv_fd, pid, gf_static + GameFacade_P2);
+    g_dbg.base_game = base_game;
     if (!base_game) return 0;
 
     uint64_t match = rd<uint64_t>(drv_fd, pid, base_game + BaseGame_Match);
+    g_dbg.match = match;
     if (!match) return 0;
 
     // Check match running
     uint8_t running = rd<uint8_t>(drv_fd, pid, match + MatchIsRunning);
+    g_dbg.match_running = running != 0;
     if (!running) return 0;
 
     uint64_t local_player = rd<uint64_t>(drv_fd, pid, match + Match_LocalPlayer);
+    g_dbg.local_player = local_player;
 
     // Player dictionary
     uint64_t dict = rd<uint64_t>(drv_fd, pid, match + Match_PlayerDict);
+    g_dbg.dict = dict;
     if (!dict) return 0;
 
     uint64_t entries_arr = rd<uint64_t>(drv_fd, pid, dict + Dict_Entries);
     if (!entries_arr) return 0;
 
     int32_t count = rd<int32_t>(drv_fd, pid, dict + Dict_Count);
+    g_dbg.dict_count = count;
     if (count <= 0 || count > MAX_PLAYERS) return 0;
 
     // entries data starts after il2cpp array header (Dict_ArrayHeader = 0x20)
@@ -126,6 +135,7 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
         p.valid = true;
         found++;
     }
+    g_dbg.players_found = found;
     return found;
 }
 

@@ -341,19 +341,42 @@ namespace ui::menu {
 
         if (begin_section("game process", cs, true)) {
             push_bold();
-            ImGui::TextDisabled("Free Fire PID");
+            char buf[128];
+            ImGui::TextDisabled("PID");
             if (g_ff_pid > 0) {
-                char buf[64];
                 std::snprintf(buf, sizeof(buf), "%d", g_ff_pid);
                 ImGui::TextColored(ImVec4(.2f,1.f,.4f,1.f), "%s", buf);
-                ImGui::TextColored(ImVec4(.5f,.9f,.5f,1.f), "%s", "Process found");
             } else {
-                ImGui::TextColored(ImVec4(1.f,.3f,.3f,1.f), "0");
-                ImGui::TextColored(ImVec4(1.f,.5f,.5f,1.f), "Not running");
+                ImGui::TextColored(ImVec4(1.f,.3f,.3f,1.f), "%s", "Not found");
             }
             sep();
-            ImGui::TextDisabled("Package");
-            ImGui::TextUnformatted(ff::PACKAGE);
+            ImGui::TextDisabled("il2cpp base");
+            std::snprintf(buf, sizeof(buf), "0x%llX", (unsigned long long)ff::g_base);
+            ImGui::TextColored(ff::g_base ? ImVec4(.2f,1.f,.4f,1.f) : ImVec4(1.f,.3f,.3f,1.f), "%s", buf);
+            sep();
+            ImGui::TextDisabled("Pointer chain");
+            const ff::DbgChain& d = ff::g_dbg;
+            auto row = [&](const char* label, uint64_t val) {
+                ImGui::TextDisabled("%s", label);
+                ImGui::SameLine();
+                std::snprintf(buf, sizeof(buf), "0x%llX", (unsigned long long)val);
+                ImGui::TextColored(val ? ImVec4(.6f,1.f,.6f,1.f) : ImVec4(1.f,.4f,.4f,1.f), "%s", buf);
+            };
+            row("GameFacade:", d.gf_static);
+            row("BaseGame:  ", d.base_game);
+            row("Match:     ", d.match);
+            row("LocalPlayer:", d.local_player);
+            row("Dict:      ", d.dict);
+            sep();
+            ImGui::TextDisabled("Match running");
+            ImGui::TextColored(d.match_running ? ImVec4(.2f,1.f,.4f,1.f) : ImVec4(1.f,.4f,.4f,1.f),
+                "%s", d.match_running ? "YES" : "NO");
+            ImGui::TextDisabled("Dict count");
+            std::snprintf(buf, sizeof(buf), "%d", d.dict_count);
+            ImGui::TextUnformatted(buf);
+            ImGui::TextDisabled("Players found");
+            std::snprintf(buf, sizeof(buf), "%d", d.players_found);
+            ImGui::TextColored(d.players_found > 0 ? ImVec4(.2f,1.f,.4f,1.f) : ImVec4(1.f,.6f,.2f,1.f), "%s", buf);
             pop_bold();
         }
         end_section();
