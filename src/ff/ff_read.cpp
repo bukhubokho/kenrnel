@@ -163,15 +163,17 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
         p.is_local = (player == local_player);
         p.is_bot   = rd<uint8_t>(drv_fd, pid, player + Player_IsBot) != 0;
 
-        // HP — chain: player + Player_HP → list ptr → entry → value
-        // If chain fails (component not init'd for distant players), keep player visible
+        // HP — chain: player+Player_HP → PRIDataPool → m_Datas(+HP_List) → entry[0](+HP_Entry) → Value(+HP_Value)
         bool hp_ok = false;
-        uint64_t hp_list = rd<uint64_t>(drv_fd, pid, player + Player_HP);
-        if (hp_list) {
-            uint64_t hp_entry = rd<uint64_t>(drv_fd, pid, hp_list + HP_Entry);
-            if (hp_entry) {
-                p.hp = rd<float>(drv_fd, pid, hp_entry + HP_Value);
-                hp_ok = true;
+        uint64_t hp_pool = rd<uint64_t>(drv_fd, pid, player + Player_HP);
+        if (hp_pool) {
+            uint64_t hp_datas = rd<uint64_t>(drv_fd, pid, hp_pool + HP_List);
+            if (hp_datas) {
+                uint64_t hp_entry = rd<uint64_t>(drv_fd, pid, hp_datas + HP_Entry);
+                if (hp_entry) {
+                    p.hp = rd<float>(drv_fd, pid, hp_entry + HP_Value);
+                    hp_ok = true;
+                }
             }
         }
         // Only skip if we got a real HP read and it's zero (actually dead)
