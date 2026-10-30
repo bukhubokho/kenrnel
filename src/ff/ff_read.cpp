@@ -100,10 +100,11 @@ static void refresh_heap_ranges(uint32_t pid) {
 static uint64_t heap_scan_for_match(int fd, uint32_t pid) {
     using namespace Offsets;
 
-    // Validate cached — confirm LocalPlayer pointer still looks valid
+    // Validate cached — LocalPlayer must be a real 48-bit heap address
     if (s_heap_match) {
         uint64_t lp = rd<uint64_t>(fd, pid, s_heap_match + Match_LocalPlayer);
-        if (lp >= 0x100000 && !(lp & 7)) return s_heap_match;
+        if (lp >= 0x100000000ULL && lp <= 0x0000FFFFFFFFFFFFULL && !(lp & 7))
+            return s_heap_match;
         s_heap_match = 0;
         s_heap_ri    = 0;
         s_heap_off   = 0;
@@ -145,15 +146,18 @@ static uint64_t heap_scan_for_match(int fd, uint32_t pid) {
         // One bulk read covering offsets 0..0x13F
         if (!mem::read(fd, pid, candidate, blk, sizeof(blk))) continue;
 
-        // LocalPlayer at 0xD8 — must be heap-aligned pointer
+        // LocalPlayer and PlayerDict must be real 48-bit heap addresses.
+        // Reject packed floats (e.g. 0x3F8000003F800000) and other garbage.
+        constexpr uint64_t HEAP_LO = 0x100000000ULL;        // > 4 GB
+        constexpr uint64_t HEAP_HI = 0x0000FFFFFFFFFFFFULL; // < 48-bit limit
+
         uint64_t lp = 0;
         __builtin_memcpy(&lp, blk + Match_LocalPlayer, 8);
-        if (lp < 0x100000 || (lp & 7)) continue;
+        if (lp < HEAP_LO || lp > HEAP_HI || (lp & 7)) continue;
 
-        // PlayerDict at 0x128 — must be heap-aligned pointer
         uint64_t dict = 0;
         __builtin_memcpy(&dict, blk + Match_PlayerDict, 8);
-        if (dict < 0x100000 || (dict & 7)) continue;
+        if (dict < HEAP_LO || dict > HEAP_HI || (dict & 7)) continue;
 
         // Dict count sanity — allow 0 during lobby (players not spawned yet)
         int32_t cnt = rd<int32_t>(fd, pid, dict + Dict_Count);
