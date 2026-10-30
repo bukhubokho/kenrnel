@@ -236,8 +236,11 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
     uint64_t match = 0;
     g_dbg.used_heap_scan = false;
 
-    if (!gf_static) {
-        // TypeInfo not yet initialized — try heap scan fast-path
+    // A valid Il2CppClass* on Android ARM64 must be a heap address (> 4 GB).
+    // If the read returns a small value the GameFacade offset is wrong for this build —
+    // fall through to heap scan instead of chasing a garbage pointer.
+    if (!gf_static || gf_static < 0x100000000ULL) {
+        // TypeInfo zero or offset wrong — try heap scan fast-path
         uint64_t heap_match = heap_scan_for_match(drv_fd, pid);
         if (!heap_match) return 0;
         match = heap_match;
