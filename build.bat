@@ -48,7 +48,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: -- Build --
+:: -- Build both targets --
 cmake --build %BUILD_DIR% --config Release -j4
 
 if errorlevel 1 (
@@ -57,24 +57,30 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: -- Package as shell-wrapper .sh --
-:: Shell script header that extracts + runs the embedded ELF
-set BINARY=%BUILD_DIR%\ffkernel
-if not exist "%BINARY%" set BINARY=%BUILD_DIR%\ffkernel.exe
+:: -- Package ffkernel (needs driver) --
+set BINARY_K=%BUILD_DIR%\ffkernel
+python3 make_sh.py %BINARY_K% ffkernel.sh
+if errorlevel 1 ( copy /Y "%BINARY_K%" ffkernel.sh )
 
-python3 make_sh.py %BINARY% %OUTPUT%
-if errorlevel 1 (
-    :: fallback: just copy binary with .sh extension
-    copy /Y "%BINARY%" "%OUTPUT%"
-)
+:: -- Package ffext (no driver check) --
+set BINARY_E=%BUILD_DIR%\ffext
+python3 make_sh.py --ext %BINARY_E% ffext.sh
+if errorlevel 1 ( copy /Y "%BINARY_E%" ffext.sh )
 
 echo.
 echo ============================================================
-echo [+] Done: %OUTPUT%
-echo Push to phone:
-echo   adb push %OUTPUT% /data/local/tmp/
-echo   adb push key.txt   /data/local/tmp/
-echo   adb shell chmod 755 /data/local/tmp/%OUTPUT%
-echo   adb shell /data/local/tmp/%OUTPUT%
+echo [+] ffkernel.sh  — RTkernel driver  (needs 5.10.sh loaded)
+echo [+] ffext.sh     — external proc_mem (root only, no driver)
+echo.
+echo Push kernel build:
+echo   adb push ffkernel.sh /data/local/tmp/
+echo   adb push key.txt      /data/local/tmp/
+echo   adb shell chmod 755 /data/local/tmp/ffkernel.sh
+echo   adb shell /data/local/tmp/ffkernel.sh
+echo.
+echo Push external build:
+echo   adb push ffext.sh /data/local/tmp/
+echo   adb shell chmod 755 /data/local/tmp/ffext.sh
+echo   adb shell /data/local/tmp/ffext.sh
 echo ============================================================
 pause
