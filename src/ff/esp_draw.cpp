@@ -4,7 +4,7 @@
 #include "esp_draw.hpp"
 #include "ff_read.hpp"
 #include "Offsets.h"
-#include "../driver/driver.h"
+#include "../mem/reader.hpp"
 #include <cmath>
 #include <cstdio>
 
@@ -23,30 +23,30 @@ bool update_camera(int drv_fd, uint32_t pid, uint64_t base, uint64_t match_hint)
     if (!match) {
         // TypeInfo path — only when heap scan hasn't found the match yet
         if (!base) return false;
-        uint64_t gf_static = rt_read_t<uint64_t>(drv_fd, pid, base + GameFacade);
+        uint64_t gf_static = mem::read_t<uint64_t>(drv_fd, pid, base + GameFacade);
         if (!gf_static) return false;
-        uint64_t sf        = rt_read_t<uint64_t>(drv_fd, pid, gf_static + GameFacade_SF);
+        uint64_t sf        = mem::read_t<uint64_t>(drv_fd, pid, gf_static + GameFacade_SF);
         if (!sf) return false;
-        uint64_t mg        = rt_read_t<uint64_t>(drv_fd, pid, sf + GameFacade_MatchGame);
+        uint64_t mg        = mem::read_t<uint64_t>(drv_fd, pid, sf + GameFacade_MatchGame);
         if (!mg) return false;
-        match              = rt_read_t<uint64_t>(drv_fd, pid, mg + BaseGame_Match);
+        match              = mem::read_t<uint64_t>(drv_fd, pid, mg + BaseGame_Match);
     }
     if (!match) return false;
 
-    uint64_t local = rt_read_t<uint64_t>(drv_fd, pid, match + Match_LocalPlayer);
+    uint64_t local = mem::read_t<uint64_t>(drv_fd, pid, match + Match_LocalPlayer);
     if (!local) return false;
 
-    uint64_t cam_obj = rt_read_t<uint64_t>(drv_fd, pid, local + Player_Camera);
+    uint64_t cam_obj = mem::read_t<uint64_t>(drv_fd, pid, local + Player_Camera);
     ff::g_dbg.cam_obj = cam_obj;
     if (!cam_obj) return false;
-    uint64_t follow  = rt_read_t<uint64_t>(drv_fd, pid, cam_obj + Camera_Follow);
+    uint64_t follow  = mem::read_t<uint64_t>(drv_fd, pid, cam_obj + Camera_Follow);
     ff::g_dbg.cam_follow = follow;
     if (!follow) return false;
-    uint64_t native  = rt_read_t<uint64_t>(drv_fd, pid, follow + Camera_IntPtr);
+    uint64_t native  = mem::read_t<uint64_t>(drv_fd, pid, follow + Camera_IntPtr);
     ff::g_dbg.cam_native = native;
     if (!native) return false;
 
-    rt_read(drv_fd, pid, native + Camera_Matrix, g_mvp, sizeof(g_mvp));
+    mem::read(drv_fd, pid, native + Camera_Matrix, g_mvp, sizeof(g_mvp));
     ff::g_dbg.dbg_mvp11 = g_mvp[11];
     ff::g_dbg.dbg_mvp15 = g_mvp[15];
     g_cam_ok = true;

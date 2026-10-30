@@ -1,9 +1,9 @@
 // language: C++17, target: Android arm64
-// Reads Free Fire entity list via RTkernel driver (ring-0, no injection).
+// Reads Free Fire entity list — backend-agnostic (USE_PROC_MEM or RTkernel).
 // All pointer chains are OB55 offsets from Offsets.h.
 #include "ff_read.hpp"
 #include "Offsets.h"
-#include "../driver/driver.h"
+#include "../mem/reader.hpp"
 #include "ff_pid.hpp"
 #include <cstdio>
 #include <cstring>
@@ -35,7 +35,7 @@ static int64_t now_ms() {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 template<typename T>
 static inline T rd(int fd, uint32_t pid, uint64_t addr) {
-    return rt_read_t<T>(fd, pid, addr);
+    return mem::read_t<T>(fd, pid, addr);
 }
 
 // Read UTF-16 il2cpp string → ASCII (first 31 chars)
@@ -46,7 +46,7 @@ static void read_il2cpp_str(int fd, uint32_t pid, uint64_t str_ptr, char* out, i
     if (len <= 0 || len > 64) return;
     if (len >= max) len = max - 1;
     uint16_t wbuf[64] = {};
-    rt_read(fd, pid, str_ptr + 0x14, wbuf, (size_t)len * 2);
+    mem::read(fd, pid, str_ptr + 0x14, wbuf, (size_t)len * 2);
     for (int i = 0; i < len; i++)
         out[i] = (char)(wbuf[i] & 0x7F);
     out[len] = '\0';
@@ -123,8 +123,8 @@ static uint64_t heap_scan_for_match(int fd, uint32_t pid) {
     if (s_heap_n == 0) return 0;
 
     // Scan 200 candidates per tick (0x1000 stride).
-    // Each candidate: one bulk rt_read of 0x140 bytes → check in buffer.
-    // ~200 IOCTLs per 100ms tick (vs 1000+ single-byte reads).
+    // Each candidate: one bulk read of 0x140 bytes → check in buffer.
+    // ~200 reads per 100ms tick (vs 1000+ single-byte reads).
     constexpr uint64_t STRIDE     = 0x1000;
     constexpr int      CANDS_TICK = 200;
     uint8_t blk[0x140];
@@ -143,7 +143,7 @@ static uint64_t heap_scan_for_match(int fd, uint32_t pid) {
         s_heap_off += STRIDE;
 
         // One bulk read covering offsets 0..0x13F
-        if (!rt_read(fd, pid, candidate, blk, sizeof(blk))) continue;
+        if (!mem::read(fd, pid, candidate, blk, sizeof(blk))) continue;
 
         // LocalPlayer at 0xD8 — must be heap-aligned pointer
         uint64_t lp = 0;
@@ -189,8 +189,7 @@ static int find_il2cpp_candidates(uint32_t pid, uint64_t* out, int max) {
 bool init(int drv_fd, uint32_t pid) {
     if (drv_fd < 0 || pid == 0) return false;
 
-    g_dbg.rt_set_ok = rt_set_pid_ok(drv_fd, pid, PACKAGE);
-    rt_set_pid(drv_fd, pid, PACKAGE);
+    g_dbg.rt_set_ok = mem::set_pid(drv_fd, pid, PACKAGE);
 
     uint64_t candidates[16];
     int n = find_il2cpp_candidates(pid, candidates, 16);
@@ -208,8 +207,8 @@ int update(int drv_fd, uint32_t pid, PlayerInfo* players) {
     g_dbg = {};
     if (drv_fd < 0 || pid == 0) return 0;
 
-    // Refresh SET_PID every frame — some RTkernel builds expire the mm ref
-    g_dbg.rt_set_ok = rt_set_pid_ok(drv_fd, pid, PACKAGE);
+    // Refresh SET_PID every frame — RTkernel expires mm ref; no-op for proc_mem backend
+    g_dbg.rt_set_ok = mem::set_pid(drv_fd, pid, PACKAGE);
 
     // Re-scan maps when g_base is missing or ELF magic fails, rate-limit to 300ms
     if (!g_base || rd<uint32_t>(drv_fd, pid, g_base) != 0x464C457F) {

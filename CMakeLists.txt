@@ -4,9 +4,8 @@ project(ffkernel)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(SOURCES
-    src/main.cpp
-    src/driver/driver.cpp
+# ── Shared sources (no main, no backend) ────────────────────────────────────
+set(COMMON_SOURCES
     src/draw/draw.cpp
     src/touch/Touch.cpp
 
@@ -28,32 +27,14 @@ set(SOURCES
     src/ff/esp_draw.cpp
     src/ui/widgets/widgets.cpp
     src/protect/oxorany.cpp
+    src/mem/reader.cpp
 )
 
-add_executable(ffkernel ${SOURCES})
+set(COMMON_INCLUDES src src/imgui src/ff)
 
-target_include_directories(ffkernel PRIVATE
-    src
-    src/imgui
-    src/ff
-)
+set(COMMON_LINK_LIBS log android EGL GLESv3 dl z m)
 
-# GLES3 — matches Wolsaw draw.cpp (#version 300 es)
-# No IMGUI_IMPL_OPENGL_ES2 — we want the full GLES3 path
-
-# Android system libraries
-target_link_libraries(ffkernel
-    log
-    android
-    EGL
-    GLESv3
-    dl
-    z
-    m
-)
-
-# Strip + optimize for size
-target_compile_options(ffkernel PRIVATE
+set(COMMON_COMPILE_OPTS
     -O2
     -fvisibility=hidden
     -ffunction-sections
@@ -62,7 +43,28 @@ target_compile_options(ffkernel PRIVATE
     -fno-rtti
 )
 
-target_link_options(ffkernel PRIVATE
+set(COMMON_LINK_OPTS
     -Wl,--gc-sections
     -Wl,--strip-all
 )
+
+# ── ffkernel — RTkernel driver backend ───────────────────────────────────────
+add_executable(ffkernel
+    src/main.cpp
+    src/driver/driver.cpp
+    ${COMMON_SOURCES}
+)
+target_include_directories(ffkernel PRIVATE ${COMMON_INCLUDES})
+target_link_libraries(ffkernel ${COMMON_LINK_LIBS})
+target_compile_options(ffkernel PRIVATE ${COMMON_COMPILE_OPTS})
+target_link_options(ffkernel PRIVATE ${COMMON_LINK_OPTS})
+
+# ── ffext — /proc/pid/mem external backend (no driver) ───────────────────────
+add_executable(ffext
+    src/main_ext.cpp
+    ${COMMON_SOURCES}
+)
+target_include_directories(ffext PRIVATE ${COMMON_INCLUDES})
+target_link_libraries(ffext ${COMMON_LINK_LIBS})
+target_compile_options(ffext PRIVATE ${COMMON_COMPILE_OPTS} -DUSE_PROC_MEM)
+target_link_options(ffext PRIVATE ${COMMON_LINK_OPTS})
